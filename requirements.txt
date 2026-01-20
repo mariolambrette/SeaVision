@@ -1,0 +1,11 @@
+# Buoy Detection Pipeline - Dependencies
+# Install with: conda create -n buoy_detection python=3.10
+#               conda activate buoy_detection
+#               pip install -r requirements.txt
+
+# Core dependencies
+numpy>=1.21.0
+opencv-python>=4.5.0
+tqdm>=4.60.0
+pyyaml>=6.0
+boto3>=1.26.0

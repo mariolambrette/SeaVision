@@ -1,0 +1,12 @@
+name: seavision
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - numpy>=1.21
+  - opencv>=4.5
+  - tqdm>=4.60
+  - pyyaml>=6.0
+  - pip
+  - boto3>=1.26
