@@ -43,7 +43,9 @@ CSV_HEADERS = [
     "yc",
     "width",
     "height",
-    "confidence"
+    "confidence",
+    "label,"
+    "track_id",
 ]
 
 

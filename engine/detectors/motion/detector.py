@@ -1,7 +1,7 @@
 """Motion detector combining stabilisation and background modelling."""
 
 from dataclasses import dataclass, field
-from typing import Dict, Iterator, Optional, Tuple
+from typing import Dict, Iterator, Optional
 import cv2
 import numpy as np
 

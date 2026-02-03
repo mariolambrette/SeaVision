@@ -21,6 +21,10 @@ from engine.detectors.motion import(
     StabiliserConfig,
     BackgroundConfig
 )
+from engine.detectors.sam3 import(
+    SAM3DetectorConfig,
+    SAM3Detector,
+)
 from engine.visualiser import VisualiserConfig, LiveVisualiser
 
 # Module logger
@@ -101,6 +105,77 @@ register_detector(
     _parse_motion_config
 )
 
+def _parse_sam3_config(data: dict) -> "SAM3DetectorConfig":
+    """Parse a dictionary into SAM3DetectorConfig."""
+    from engine.detectors.sam3 import (
+        SAM3DetectorConfig,
+        PromptConfig,
+        PromptType,
+        PrompterConfig,
+        HybridStrategy,
+    )
+    
+    # Handle simple prompts shorthand
+    prompts = data.get("prompts", [])
+    
+    # Handle advanced prompt_config
+    prompt_config = None
+    if "prompt_config" in data:
+        pc_data = data["prompt_config"]
+        
+        # Parse prompt type
+        prompt_type_str = pc_data.get("prompt_type", "TEXT").upper()
+        prompt_type = PromptType[prompt_type_str]
+        
+        # Parse prompter config for DETECTOR mode
+        prompter = None
+        if "prompter" in pc_data:
+            pr_data = pc_data["prompter"]
+            strategy_str = pr_data.get("strategy", "BOX_REFINEMENT").upper()
+            strategy = HybridStrategy[strategy_str]
+            
+            prompter = PrompterConfig(
+                detector_type=pr_data.get("detector_type", "motion"),
+                detector_config=pr_data.get("detector_config", {}),
+                strategy=strategy,
+                text_prompts=pr_data.get("text_prompts", []),
+                min_iou_with_prompt=pr_data.get("min_iou_with_prompt", 0.0),
+            )
+        
+        prompt_config = PromptConfig(
+            prompt_type=prompt_type,
+            text_prompts=pc_data.get("text_prompts", []),
+            box_prompts=pc_data.get("box_prompts", []),
+            box_labels=pc_data.get("box_labels", []),
+            point_prompts=pc_data.get("point_prompts", []),
+            point_labels=pc_data.get("point_labels", []),
+            prompter=prompter,
+            reprompt_interval=pc_data.get("reprompt_interval", 0),
+            reprompt_on_lost=pc_data.get("reprompt_on_lost", True),
+        )
+    
+    return SAM3DetectorConfig(
+        checkpoint=data.get("checkpoint", "sam3.pt"),
+        device=data.get("device", "cuda"),
+        half=data.get("half", True),
+        prompts=prompts,
+        prompt_config=prompt_config,
+        confidence_threshold=data.get("confidence_threshold", 0.25),
+        min_mask_area=data.get("min_mask_area", 100),
+        max_mask_area=data.get("max_mask_area", 1000000),
+        video_mode=data.get("video_mode", True),
+        output_masks=data.get("output_masks", False),
+        output_labels=data.get("output_labels", True),
+        imgsz=data.get("imgsz", 1024),
+    )
+
+
+# Register SAM 3 detector (conditional on availability)
+try:
+    from engine.detectors.sam3 import SAM3Detector
+    register_detector("sam3", SAM3Detector, _parse_sam3_config)
+except ImportError:
+    logger.debug("SAM 3 detector not available (ultralytics not installed)")
 
 # ==============================================================================
 # CONFIGURATION DATACLASSES
@@ -371,7 +446,7 @@ class DetectionPipeline:
         # Create visualiser if configured
         self._visualiser: Optional[LiveVisualiser] = None
         if self.config.visualiser is not None:
-            self.__visualiser = LiveVisualiser(self.config.visualiser)
+            self._visualiser = LiveVisualiser(self.config.visualiser)
 
         logger.info("DetectionPipeline initialised.")
         logger.debug(f"Output directory: {self.config.output.output_dir}")
@@ -691,7 +766,7 @@ class DetectionPipeline:
         finally:
             # End visualisation for this source
             if self._visualiser is not None:
-                vis_result = self._viisualiser.end_video()
+                vis_result = self._visualiser.end_video()
                 logger.debug(f"Visualisation: {vis_result.summary()}")
 
         logger.debug(f"Completed {source_name}: {detection_count} detections.")

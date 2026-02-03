@@ -1,7 +1,7 @@
 """Base classes for the detectors."""
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterator, Optional
 import numpy as np
 from engine.source import FrameContext
@@ -21,6 +21,10 @@ class Detection:
         height: Height of the detection bounding box (pixels).
         confidence: Confidence score of the detection (0.0 to 1.0), or None
             if not applicable.
+        label: Optional class label for the detection.
+        track_id: Optional track ID for the detection (if tracking is used).
+        mask: Optional Segmentation mask as numpy array (H x W, uint8, 255=object).
+        metadata: Optional additional detector-specific data
     """
 
     source_file: str
@@ -31,10 +35,14 @@ class Detection:
     width: float
     height: float
     confidence: Optional[float] = None
+    label: Optional[str] = None
+    track_id: Optional[int] = None
+    mask: Optional[np.ndarray] = field(default=None, repr=False)
+    metadata: Optional[dict] = field(default=None, repr=False)
 
     def to_csv_row(self) -> dict:
         """Convert the detection to a CSV row string. (dictionary)"""
-        return {
+        row = {
             "source_file": self.source_file,
             "timestamp": f"{self.timestamp:.3f}",
             "frame_number": self.frame_number,
@@ -42,8 +50,84 @@ class Detection:
             "yc": f"{self.yc:.1f}",
             "width": f"{self.width:.1f}",
             "height": f"{self.height:.1f}",
-            "confidence": f"{self.confidence:.3f}" if self.confidence is not None else "",
         }
+        
+        # Add optional fields if present
+        if self.confidence is not None:
+            row["confidence"] = f"{self.confidence:.3f}"
+        else:
+            row["confidence"] = ""
+            
+        if self.label is not None:
+            row["label"] = self.label
+        else:
+            row["label"] = ""
+            
+        if self.track_id is not None:
+            row["track_id"] = str(self.track_id)
+        else:
+            row["track_id"] = ""
+        
+        # Note: mask and metadata are not included in CSV
+        # (masks should be saved separately if needed)
+        
+        return row
+    
+    @property
+    def bbox(self) -> tuple:
+        """Get bounding box as (x1, y1, x2, y2)."""
+        x1 = self.xc - self.width / 2
+        y1 = self.yc - self.height / 2
+        x2 = self.xc + self.width / 2
+        y2 = self.yc + self.height / 2
+        return (x1, y1, x2, y2)
+    
+    @property
+    def area(self) -> float:
+        """Get area of the bounding box."""
+        return self.width * self.height
+    
+    @classmethod
+    def from_bbox(
+        cls,
+        source_file: str,
+        timestamp: float,
+        frame_number: int,
+        x1: float,
+        y1: float,
+        x2: float,
+        y2: float,
+        **kwargs,
+    ) -> "Detection":
+        """
+        Create a Detection from corner-format bounding box.
+        
+        Args:
+            source_file: Path of the source file.
+            timestamp: Timestamp in seconds.
+            frame_number: Frame index.
+            x1, y1: Top-left corner.
+            x2, y2: Bottom-right corner.
+            **kwargs: Optional fields (confidence, label, track_id, etc.)
+        
+        Returns:
+            Detection with center-format coordinates.
+        """
+        xc = (x1 + x2) / 2
+        yc = (y1 + y2) / 2
+        width = x2 - x1
+        height = y2 - y1
+        
+        return cls(
+            source_file=source_file,
+            timestamp=timestamp,
+            frame_number=frame_number,
+            xc=xc,
+            yc=yc,
+            width=width,
+            height=height,
+            **kwargs,
+        )
 
 
 class DetectorBase(ABC):

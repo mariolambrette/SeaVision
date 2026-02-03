@@ -52,7 +52,7 @@ class FrameStabiliser:
         self.config = config or StabiliserConfig()
 
         # Initialise the feature detector
-        # TODO: Are thee anymore obvous detector options that shoul dbe implemented?
+        # TODO: Are there any more obvious detector options that should be implemented?
         if self.config.feature_detector == "ORB":
             self._detector = cv2.ORB_create(nfeatures=self.config.max_features)
         elif self.config.feature_detector == "AKAZE":
