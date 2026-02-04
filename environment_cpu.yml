@@ -11,3 +11,5 @@ dependencies:
   - pip
   - boto3>=1.26
   - ultralytics>=8.3.237
+  - pytorch>=2.0
+  - torchvision>=0.15
