@@ -126,6 +126,17 @@ class SAM3Detector(DetectorBase):
         if self._model is not None:
             return
         
+        import os
+        
+        # Check if checkpoint exists
+        if not os.path.exists(self.config.checkpoint):
+            raise FileNotFoundError(
+                f"SAM 3 checkpoint not found: {self.config.checkpoint}\n"
+                f"Expected location: {os.path.abspath(self.config.checkpoint)}\n"
+                f"Download from: https://huggingface.co/facebook/sam3\n"
+                f"Then place in ./models/sam3.pt or specify path via checkpoint parameter."
+            )
+
         logger.info(f"Loading SAM3 model from checkpoint: {self.config.checkpoint}")
 
         try:

@@ -203,7 +203,7 @@ class SAM3DetectorConfig:
     """
 
     # Model settings
-    checkpoint: str = "sam3.pt"
+    checkpoint: str = "./models/sam3.pt" # Default when run locally with sam3.pt checkpoint downloaded to ./models/
     device: str = "cuda"
     half: bool = True
     
