@@ -21,6 +21,7 @@ import logging
 import os
 from typing import Dict, Iterator, List, Optional, Tuple
 import numpy as np
+import torch
 
 from engine.source.base import FrameContext
 from engine.detectors.base import Detection, DetectorBase
@@ -838,8 +839,24 @@ class SAM3Detector(DetectorBase):
         if not self._video_initialised:
             # Set up the image for the predictor
             self._predictor.set_image(frame)
-            
-            # Add initial prompts
+
+            # Manually initialise the video inference state to mirror
+            # Ultralytics' expected structure when using stream_inference.
+            preprocessed = self._predictor.preprocess([frame])
+            self._predictor.batch = (None, [frame], None)
+
+            # Ensure per-frame buffers are large enough for this frame index.
+            num_frames = max(context.frame_number + 1, 1)
+            self._predictor.inference_state = {
+                "num_frames": num_frames,
+                "tracker_inference_states": [],
+                "tracker_metadata": {},
+                "text_prompt": None,
+                "per_frame_geometric_prompt": [None] * num_frames,
+                "im": preprocessed,
+            }
+
+            # Add initial prompts (sets text_ids and per-frame prompt entries)
             frame_idx, out = self._predictor.add_prompt(
                 frame_idx=context.frame_number,
                 text=text,
@@ -852,14 +869,25 @@ class SAM3Detector(DetectorBase):
             # Parse initial frame output
             yield from self._parse_video_output(out, context, text)
         else:
+            # Grow per-frame buffers if the video is longer than initial estimate
+            frame_idx = context.frame_number
+            prompt_buf = self._predictor.inference_state.get("per_frame_geometric_prompt")
+            if prompt_buf is not None and frame_idx >= len(prompt_buf):
+                extend_by = frame_idx - len(prompt_buf) + 1
+                prompt_buf.extend([None] * extend_by)
+                self._predictor.inference_state["per_frame_geometric_prompt"] = prompt_buf
+                # Keep num_frames in sync with the extended buffer
+                self._predictor.inference_state["num_frames"] = len(prompt_buf)
+
             # Update predictor with current frame
             self._predictor.inference_state["im"] = self._predictor.preprocess([frame])
             
             # Run inference on subsequent frames
-            out = self._predictor._run_single_frame_inference(
-                frame_idx=context.frame_number,
-                reverse=False,
-            )
+            with torch.inference_mode():
+                out = self._predictor._run_single_frame_inference(
+                    frame_idx=frame_idx,
+                    reverse=False,
+                )
             
             yield from self._parse_video_output(out, context, text)
 

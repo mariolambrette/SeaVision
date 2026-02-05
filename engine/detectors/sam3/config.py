@@ -26,6 +26,9 @@ Example usage:
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Dict, List, Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class PromptType(Enum):
@@ -286,6 +289,11 @@ class SAM3DetectorConfig:
                 )
             # If no prompts and no prompt_config, leave as None
             # Detector will validate at runtime when process_frame is called
+
+        # Warn if cpu andFP16 used
+        if self.device == "cpu" and self.half:
+            logger.warning("FP16 (half=True) is not supported on CPU. Setting half=False.")
+            self.half = False
 
     def get_ultralytics_overrides(self) -> Dict:
         """Get config dict for Ultralytics predictors."""
