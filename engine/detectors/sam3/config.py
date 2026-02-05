@@ -1,27 +1,72 @@
 """
-Configuration classes for the SAM3 detector with Ultralytics integration.
+Configuration dataclasses for the SAM3 detector.
+
+This module defines all configuration options for the SAM3 detector, including:
+- Prompt configuration (text, box, point, hybrid modes)
+- Detector configuration (model settings, thresholds, output options)
+- Prompter configuration (for hybrid mode with other detectors)
+
+Example usage:
+    >>> from engine.detectors.sam3.config import (
+    ...     SAM3DetectorConfig,
+    ...     PromptConfig,
+    ...     PromptType,
+    ... )
+    >>> 
+    >>> config = SAM3DetectorConfig(
+    ...     prompt_config=PromptConfig(
+    ...         prompt_type=PromptType.TEXT,
+    ...         text_prompts=["fish", "coral"],
+    ...     ),
+    ...     confidence_threshold=0.5,
+    ...     video_mode=True,
+    ... )
 """
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional
 
 
 class PromptType(Enum):
     """
-    Types of prompts to use for SAM3 segmentation.
+    Type of prompt to use for SAM3 segmentation.
+
+    Attributes:
+        TEXT: Natural language text prompts (e.g., "fish", "coral reef").
+            Uses SAM3's semantic understanding to find matching objects.
+        BOX: Bounding box prompts in xyxy format.
+            Finds objects within or similar to the provided boxes.
+        POINT: Point prompts with x, y coordinates.
+            Click-based prompts similar to SAM2. Note: Limited support
+            in SAM3SemanticPredictor.
+        DETECTOR: Hybrid mode using another detector to generate prompts.
+            The secondary detector provides candidate regions for SAM3
+            to refine or classify.
     """
 
     TEXT = auto()      # Text concepts
     BOX = auto()       # Bounding box exemplars
     POINT = auto()     # Point prompts (SAM2 style)
-    DETECTOR = auto()  # Use another deterctor to generate prompts
+    DETECTOR = auto()  # Use another detector to generate prompts
 
 
 class HybridStrategy(Enum):
-    """How to use detector outputs with SAM3."""
+    """
+    Strategy for hybrid mode (PromptType.DETECTOR).
 
-    BOX_REFINEMENT= auto()
+    Defines how SAM3 uses the detections from the prompter detector.
+
+    Attributes:
+        BOX_REFINEMENT: Use detected boxes directly as SAM3 box prompts.
+            SAM3 generates refined segmentation masks for each box.
+            Good for improving mask quality from coarse detections.
+        CLASSIFY_REGIONS: Use text prompts to classify detected regions.
+            SAM3 applies semantic labels to the detected regions.
+            Requires text_prompts to be set in PrompterConfig.
+    """
+
+    BOX_REFINEMENT = auto()
     CLASSIFY_REGIONS = auto()
 
 
@@ -30,26 +75,26 @@ class PrompterConfig:
     """
     Configuration for the prompt source in hybrid/detector mode.
 
-    In hybrid mode, another detector geberates candidate boxes that become
-    prompts for SAM3. This allows combining fast detector (motion/YOLO) with
-    SAM3'3 segementation and semantic understanding.
+    In hybrid mode, another detector generates candidate boxes that become
+    prompts for SAM3. This allows combining fast detectors (motion/YOLO) with
+    SAM3's segmentation and semantic understanding.
 
     Attributes:
-        detector_type: Type of detector to use ("motion", "yolo" or custom)
+        detector_type: Type of detector to use ("motion", "yolo" or custom).
         detector_config: Configuration dict passed to the detector.
         strategy: How to combine detector output with SAM3.
         text_prompts: Text prompts for CLASSIFY_REGIONS strategy.
         min_iou_with_prompt: Minimum IoU between SAM3 output and original
             detector box to keep the detection (filters false positives).
 
-    Example (motion + SAM 3 refinement):
+    Example (motion + SAM3 refinement):
         PrompterConfig(
             detector_type="motion",
             detector_config={"min_area": 200, "persistence_enabled": True},
             strategy=HybridStrategy.BOX_REFINEMENT,
         )
     
-    Example (motion finds candidates, SAM 3 classifies):
+    Example (motion finds candidates, SAM3 classifies):
         PrompterConfig(
             detector_type="motion",
             detector_config={"min_area": 100},
@@ -57,7 +102,7 @@ class PrompterConfig:
             text_prompts=["fish", "coral", "debris"],  # What to look for
         )
     
-    Example (YOLO + SAM 3 masks):
+    Example (YOLO + SAM3 masks):
         PrompterConfig(
             detector_type="yolo",
             detector_config={"model": "yolov8n.pt", "conf": 0.25},
@@ -77,8 +122,8 @@ class PromptConfig:
     """
     Configuration for SAM3 prompting.
 
-    SAM3 support multiple prompt types:
-    - Text: find all instances of concepts (e.g. fish, "seal")
+    SAM3 supports multiple prompt types:
+    - Text: find all instances of concepts (e.g. "fish", "seal")
     - Box exemplars: Find all similar objects to the boxed example
     - Points: SAM2-style single object segmentation, segments the object at the
         given point(s).
@@ -99,12 +144,12 @@ class PromptConfig:
         point_prompts: List of points as [x, y], if using POINT prompts.
         point_labels: Labels for point prompts (1=positive, 0=negative).
 
-        # For Detector mode (hybrid):
+        # For DETECTOR mode (hybrid):
         prompter: Configuration for the prompt-generating detector.
 
-        # Video settings
+        # Video settings:
         reprompt_interval: Interval (in frames) to re-generate prompts in video.
-            For frame sbetween prompts, only existing objects are tracked. This
+            For frames between prompts, only existing objects are tracked. This
             is faster than reprompting but means new objects will be missed.
         reprompt_on_lost: Whether to reprompt when tracked objects are lost.
     """
@@ -161,8 +206,8 @@ class SAM3DetectorConfig:
         device: Compute device ("cuda", "cpu", "mps", etc.).
         half: Use FP16 for faster inference on supported devices.
         
-        prompts: shorthand for text_prompts, creates PromptConfig internally
-        prompt_config: Full prompt configuration (ovverrides prompts).
+        prompts: Shorthand for text_prompts, creates PromptConfig internally.
+        prompt_config: Full prompt configuration (overrides prompts).
 
         confidence_threshold: Minimum confidence for detections.
         min_mask_area: Minimum area (in pixels) for valid masks.
@@ -203,7 +248,7 @@ class SAM3DetectorConfig:
     """
 
     # Model settings
-    checkpoint: str = "./models/sam3.pt" # Default when run locally with sam3.pt checkpoint downloaded to ./models/
+    checkpoint: str = "./models/sam3.pt"
     device: str = "cuda"
     half: bool = True
     
@@ -228,24 +273,20 @@ class SAM3DetectorConfig:
     # Inference settings
     imgsz: int = 1024
 
-
     def __post_init__(self):
         """Build prompt config from simple prompts if needed."""
 
+        # Only create PromptConfig if not already provided
         if self.prompt_config is None:
             if self.prompts:
+                # User provided simple prompts - create TEXT config
                 self.prompt_config = PromptConfig(
                     prompt_type=PromptType.TEXT,
                     text_prompts=self.prompts,
                 )
-            else:
-                # Empty config - must be set before use
-                self.prompt_config = PromptConfig(
-                    prompt_type=PromptType.TEXT,
-                    text_prompts=[],
-                )
+            # If no prompts and no prompt_config, leave as None
+            # Detector will validate at runtime when process_frame is called
 
-    
     def get_ultralytics_overrides(self) -> Dict:
         """Get config dict for Ultralytics predictors."""
         return {
@@ -255,5 +296,6 @@ class SAM3DetectorConfig:
             "model": self.checkpoint,
             "half": self.half,
             "imgsz": self.imgsz,
+            "device": self.device,
             "verbose": False,
         }
