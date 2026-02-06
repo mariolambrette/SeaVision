@@ -436,7 +436,7 @@ class DetectionPipeline:
             config: Pipeline configuration. If None, defaults are used.
             detector_factory: Optional callable that returns a new detector
                 instance. If provided, overrides the detector config from
-                PipelineCOnfig. Use this for maximum flexibility when configuring
+                PipelineConfig. Use this for maximum flexibility when configuring
                 detectors programmatically.
         """
 
@@ -467,7 +467,7 @@ class DetectionPipeline:
     
     def _create_detector_from_config(self) -> DetectorBase:
         """
-        Creates a detector instance based on the piepline config.
+        Creates a detector instance based on the pipeline config.
 
         Uses the detector registry to look up the appropiate class and config
         parser.

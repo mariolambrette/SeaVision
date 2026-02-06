@@ -31,6 +31,21 @@ python -m venv venv
 venv\Scripts\activate.bat
 pip install -r requirements.txt
 ```
+**GPU acceleration**
+
+The above install allows you to run all seavision functionality but does not
+provide support for GPU-accelerated processing. Some methods (e.g. SAM3-based
+detection) ill be significantly faster if a GPU is available. You will need to
+install specific dendencies for this manually based on your hardware using pip.
+
+For example, to run on an NVIDIA RTX 5090 GPU with cuda 13 you could install
+the following:
+
+```bash
+pip install torch>=2.9.0 torchvision>=0.20.0 --index-url https://download.pytorch.org/whl/cu130 --force-reinstall
+```
+Youcan find more information on pytorch compatibility [here](https://pytorch.org/get-started/locally/)
+
 
 ### AWS S3 Access (Optional)
 
