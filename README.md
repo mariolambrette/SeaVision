@@ -19,7 +19,7 @@ neccersary depedencies a follows with conda (reccomended) or pip:
 
 ```bash
 # Clone Git repository
-git clone github.com/mariolambrette/SeaVision
+git clone https://github.com/mariolambrette/SeaVision
 cd SeaVision
 
 # Conda setup
