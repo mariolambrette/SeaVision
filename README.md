@@ -44,7 +44,8 @@ the following:
 ```bash
 pip install torch>=2.9.0 torchvision>=0.20.0 --index-url https://download.pytorch.org/whl/cu130 --force-reinstall
 ```
-Youcan find more information on pytorch compatibility [here](https://pytorch.org/get-started/locally/)
+You can find more information on pytorch compatibility 
+[here](https://pytorch.org/get-started/locally/).
 
 
 ### AWS S3 Access (Optional)
