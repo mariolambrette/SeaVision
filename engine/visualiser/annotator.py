@@ -104,13 +104,22 @@ class FrameAnnotator:
         x2 = int(detection.xc + detection.width / 2)
         y2 = int(detection.yc + detection.height / 2)
         
+        # Choose colour based on optional per-class mapping
+        colour = self._bbox_style.colour
+        if (
+            self._bbox_style.class_colours is not None
+            and detection.label is not None
+            and detection.label in self._bbox_style.class_colours
+        ):
+            colour = self._bbox_style.class_colours[detection.label]
+
         # Draw bounding box if enabled
         if self._bbox_style.draw_box:
             cv2.rectangle(
                 frame,
                 (x1, y1),
                 (x2, y2),
-                self._bbox_style.colour,
+                colour,
                 self._bbox_style.thickness
             )
 
@@ -118,7 +127,7 @@ class FrameAnnotator:
         if self._bbox_style.draw_centre:
             centre_colour = (
                 self._bbox_style.centre_colour
-                or self._bbox_style.colour
+                or colour
             )
 
             cv2.circle(
@@ -229,10 +238,14 @@ class FrameAnnotator:
                 xc=detection.xc,
                 yc=detection.yc,
                 width=detection.width,
-                height=detection.height
+                height=detection.height,
+                label=detection.label or "",
             )
-        
+
         parts = []
+        # Class label text
+        if self._label_style.show_label and detection.label is not None:
+            parts.append(str(detection.label))
         if self._label_style.show_frame_number:
             parts.append(f"Frame: {detection.frame_number}")
         if self._label_style.show_confidence and detection.confidence is not None:

@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict
 
 
 class OutputMode(Enum):
@@ -30,7 +30,11 @@ class BoundingBoxStyle:
     thickness: int = 2
     draw_centre: bool = False
     centre_radius: int = 3
-    centre_colour: Tuple[int, int, int] = (0, 255, 0) # BGR format green
+    centre_colour: Tuple[int, int, int] = (0, 255, 0)  # BGR format green
+    # Optional per-class colours, keyed by Detection.label string. If a
+    # detection's label matches a key in this dict, that colour will be used
+    # instead of the default "colour" value.
+    class_colours: Optional[Dict[str, Tuple[int, int, int]]] = None
 
 
 @dataclass
@@ -43,6 +47,9 @@ class LabelStyle:
     background_colour: Optional[Tuple[int, int, int]] = (0, 0, 0)  # BGR format black
     position: LabelPosition = LabelPosition.TOP_LEFT
     padding: int = 2
+    # Whether to include the Detection.label text (if present) in the
+    # rendered label string.
+    show_label: bool = True
     show_confidence: bool = True
     show_frame_number: bool = False
     custom_format: Optional[str] = None
