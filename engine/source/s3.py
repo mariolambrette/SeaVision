@@ -72,6 +72,7 @@ class S3VideoSource(VideoSource):
         presigned_url_expiry: int = 14400,
         region_name: Optional[str] = None,
         profile_name: Optional[str] = None,
+        endpoint_url: Optional[str] = None,
     ):
         """
         Initialise the S3 video source.
@@ -84,6 +85,7 @@ class S3VideoSource(VideoSource):
                 config.
             profile_name: AWS profile name for SSO authentication. If None,
                 uses default credentials chain.
+            endpoint_url: Custom S3-compatible endpoint URL (e.g. Wasabi).
         
         Raises:
             ImportError: If boto3 is not installed.
@@ -100,12 +102,12 @@ class S3VideoSource(VideoSource):
         self.presigned_url_expiry = presigned_url_expiry
         self.bucket, self.key = parse_s3_uri(uri)
 
-        # Create S3 client via session (supports SSO profiles)
+        # Create S3 client via session (supports SSO profiles and custom endpoints)
         session = boto3.Session(
             profile_name=profile_name,
             region_name=region_name,
         )
-        self._s3_client = session.client("s3")
+        self._s3_client = session.client("s3", endpoint_url=endpoint_url)
 
         # State - lazy initialisation
         self._presigned_url: Optional[str] = None

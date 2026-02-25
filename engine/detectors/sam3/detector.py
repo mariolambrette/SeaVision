@@ -526,11 +526,36 @@ class SAM3Detector(DetectorBase):
         if not text_prompts:
             logger.warning("No text prompts provided, skipping frame")
             return
-        
+
+        # Optional: combine text prompts with any interactive box exemplars.
+        # This mirrors the Hugging Face API where text prompts can be
+        # accompanied by positive (label=1) and negative (label=0) boxes.
+        bboxes = None
+        labels = None
+
+        if self._positive_boxes or self._negative_boxes:
+            all_boxes = list(self._positive_boxes) + list(self._negative_boxes)
+            labels_list = [1] * len(self._positive_boxes) + [0] * len(self._negative_boxes)
+
+            bboxes = np.array(all_boxes, dtype=np.float32)
+            labels = np.array(labels_list, dtype=np.int32)
+
         if self._is_video_mode:
-            yield from self._process_video_frame(frame, context, text=text_prompts)
+            yield from self._process_video_frame(
+                frame,
+                context,
+                text=text_prompts,
+                bboxes=bboxes,
+                labels=labels,
+            )
         else:
-            yield from self._process_image_frame(frame, context, text=text_prompts)
+            yield from self._process_image_frame(
+                frame,
+                context,
+                text=text_prompts,
+                bboxes=bboxes,
+                labels=labels,
+            )
 
 
     def _process_box_mode(

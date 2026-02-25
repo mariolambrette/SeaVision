@@ -8,6 +8,7 @@ from .config import (
     SAM3DetectorConfig,
 )
 from .detector import SAM3Detector
+from .native import SAM3NativeDetector
 
 __all__ = [
     # Config
@@ -18,4 +19,5 @@ __all__ = [
     "SAM3DetectorConfig",
     # Detector
     "SAM3Detector",
+    "SAM3NativeDetector",
 ]

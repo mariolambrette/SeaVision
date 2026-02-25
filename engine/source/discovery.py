@@ -63,6 +63,7 @@ def discover_s3_videos(
     pattern: str = "*.ts",
     region_name: Optional[str] = None,
     profile_name: Optional[str] = None,
+    endpoint_url: Optional[str] = None,
 ) -> List[VideoSource]:
     """
     Discover video files in an S3 bucket.
@@ -74,6 +75,7 @@ def discover_s3_videos(
         region_name: AWS region name, if None uses the default from config.
         profile_name: AWS profile name for SSO authentication. If None,
             uses default credentials chain.
+        endpoint_url: Custom S3-compatible endpoint URL (e.g. Wasabi).
     
     Returns:
         List of S3VideoSource instances (not yet connected).
@@ -107,12 +109,12 @@ def discover_s3_videos(
     from fnmatch import fnmatch
     from .s3 import S3VideoSource
 
-    # Create S3 client via session (supports SSO profiles)
+    # Create S3 client via session (supports SSO profiles and custom endpoints)
     session = boto3.Session(
         profile_name=profile_name,
         region_name=region_name,
     )
-    s3_client = session.client("s3")
+    s3_client = session.client("s3", endpoint_url=endpoint_url)
     paginator = s3_client.get_paginator("list_objects_v2")
 
     matching_keys = []
@@ -146,6 +148,7 @@ def discover_s3_videos(
             f"s3://{bucket}/{key}",
             region_name=region_name,
             profile_name=profile_name,
+            endpoint_url=endpoint_url,
         )
         for key in matching_keys
     ]

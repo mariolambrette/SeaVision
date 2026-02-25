@@ -26,3 +26,15 @@ try:
     SAM3_AVAILABLE = True
 except ImportError:
     SAM3_AVAILABLE = False
+
+# YOLO - requires ultralytics
+try:
+    from .yolo import YOLODetector, YOLODetectorConfig
+
+    __all__.extend([
+        "YOLODetector",
+        "YOLODetectorConfig",
+    ])
+    YOLO_AVAILABLE = True
+except ImportError:
+    YOLO_AVAILABLE = False
