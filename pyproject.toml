@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "seavision"
+version = "0.1.0"
+description = "Buoy detection system pipeline (SeaVision)"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{ name = "M3B Team" }]
+license = { text = "Proprietary" }
+keywords = ["computer-vision", "detection", "buoy"]
+classifiers = [
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+]
+# Rely on the conda environment for heavy dependencies; keep this list light.
+dependencies = []
+
+[project.optional-dependencies]
+# For development in this repo; install with: pip install -e .[dev]
+dev = [
+  "pytest",
+]
+
+[tool.setuptools]
+# Top-level single-file modules to install alongside packages
+py-modules = ["pipeline", "run_pipeline"]
+
+[tool.setuptools.packages.find]
+# Install the core engine package and its subpackages
+include = ["engine*"]

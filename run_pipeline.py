@@ -17,7 +17,7 @@ from pipeline import(
     DetectorConfig,
     setup_logging,
 )
-from engine import PostprocessorConfig, OutputMode
+from engine import CSVWriterConfig, OutputMode
 
 
 def parse_args() -> argparse.Namespace:

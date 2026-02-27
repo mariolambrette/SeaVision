@@ -12,8 +12,18 @@ from .source import (
 from .detectors import Detection, DetectorBase
 from .postprocessor import (
     OutputMode,
-    PostprocessorConfig,
+    CSVWriterConfig,
     DetectionWriter,
+    FramePostprocessor,
+    VideoPostprocessor,
+    LabelFilterConfig,
+    LabelFilter,
+    PerFrameNmsConfig,
+    PerFrameNmsPostprocessor,
+    MotionTrackVideoConfig,
+    MotionTrackVideoPostprocessor,
+    PostprocessStage,
+    build_postprocess_stages,
 )
 
 __all__ = [
@@ -27,6 +37,16 @@ __all__ = [
     "discover_local_videos",
     "discover_s3_videos",
     "OutputMode",
-    "PostprocessorConfig",
+    "CSVWriterConfig",
     "DetectionWriter",
+    "FramePostprocessor",
+    "VideoPostprocessor",
+    "LabelFilterConfig",
+    "LabelFilter",
+    "PerFrameNmsConfig",
+    "PerFrameNmsPostprocessor",
+    "MotionTrackVideoConfig",
+    "MotionTrackVideoPostprocessor",
+    "PostprocessStage",
+    "build_postprocess_stages",
 ]

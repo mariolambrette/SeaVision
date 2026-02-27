@@ -11,9 +11,11 @@ from tqdm import tqdm
 from engine import (
     VideoSource,
     DetectionWriter,
-    PostprocessorConfig,
+    CSVWriterConfig,
     OutputMode,
     DetectorBase,
+    PostprocessStage,
+    build_postprocess_stages,
 )
 from engine.detectors.motion import(
     MotionDetectorConfig,
@@ -223,10 +225,12 @@ class PipelineConfig:
     """
 
     input: InputConfig = field(default_factory=InputConfig)
-    output: PostprocessorConfig = field(default_factory=PostprocessorConfig)
+    output: CSVWriterConfig = field(default_factory=CSVWriterConfig)
     detector: DetectorConfig = field(default_factory=DetectorConfig)
     resume: bool = True
     visualiser: Optional[VisualiserConfig] = None
+    # Raw dictionary used to build postprocessing stages via build_postprocess_stages
+    postprocess: Optional[dict] = None
 
     @classmethod
     def from_dict(cls, data: dict) -> "PipelineConfig":
@@ -253,7 +257,7 @@ class PipelineConfig:
             OutputMode.SINGLE_FILE if output_mode_str == "single"
             else OutputMode.PER_VIDEO
         )
-        output_config = PostprocessorConfig(
+        output_config = CSVWriterConfig(
             output_dir=output_data.get("directory", "./output"),
             output_mode=output_mode,
             single_file_name=output_data.get("single_file_name", "detections.csv"),
@@ -270,11 +274,21 @@ class PipelineConfig:
         # Top level options
         resume = data.get("resume", False)
 
+        # Optional postprocessing configuration (raw dict interpreted by
+        # build_postprocess_stages). If absent or empty, no postprocessing is
+        # applied.
+        postprocess_config: Optional[dict] = None
+        post_data = data.get("postprocess")
+        if isinstance(post_data, dict) and post_data:
+            postprocess_config = post_data
+
         return cls(
             input=input_config,
             output=output_config,
             detector=detector_config,
-            resume=resume
+            resume=resume,
+            visualiser=None,  # will be set by caller if needed
+            postprocess=postprocess_config,
         )
 
 # ==============================================================================
@@ -391,7 +405,7 @@ class DetectionPipeline:
     Example (default motion detector):
         config = PipelineConfig(
             input=InputConfig(path="./footage/"),
-            output=PostprocessorConfig(output_dir="./results"),
+            output=CSVWriterConfig(output_dir="./results"),
         )
         
         pipeline = Pipeline(config)
@@ -442,6 +456,11 @@ class DetectionPipeline:
 
         self.config = config or PipelineConfig()
         self._detector_factory = detector_factory or self._create_detector_from_config
+
+        # Optional ordered detection postprocessing stages (frame and/or video)
+        self._postprocess_stages: List[PostprocessStage] = build_postprocess_stages(
+            self.config.postprocess
+        )
 
         # Create visualiser if configured
         self._visualiser: Optional[LiveVisualiser] = None
@@ -731,7 +750,7 @@ class DetectionPipeline:
         # Start visualisation for this source
         if self._visualiser is not None:
             self._visualiser.start_video(metadata)
-        
+
         try:
             with self._detector_factory() as detector:
                 # Progress bar for frames
@@ -743,26 +762,75 @@ class DetectionPipeline:
                     leave=False,
                 )
 
-                for frame_idx, (frame, context) in enumerate(frame_iter):
-                    # Skip frames if configured
-                    if frame_skip > 1 and frame_idx % frame_skip != 0:
-                        continue
+                # If no postprocessing stages are configured, stream detections
+                # directly to the writer/visualiser as before.
+                if not self._postprocess_stages:
+                    for frame_idx, (frame, context) in enumerate(frame_iter):
+                        # Skip frames if configured
+                        if frame_skip > 1 and frame_idx % frame_skip != 0:
+                            continue
 
-                    # Collect frame detections
-                    frame_detections = list(
-                        detector.process_frame(frame, context)
-                    )
+                        frame_detections = list(detector.process_frame(frame, context))
 
-                    # Write to CSV
-                    for detection in frame_detections:
-                        writer.write(detection)
-                        detection_count += 1
-                    
-                    # Visualise frame with detections
-                    if self._visualiser is not None:
-                        self._visualiser.process_frame(
-                            frame, frame_detections, context
-                        )
+                        # Write to CSV
+                        for detection in frame_detections:
+                            writer.write(detection)
+                            detection_count += 1
+
+                        # Visualise frame with detections
+                        if self._visualiser is not None:
+                            self._visualiser.process_frame(frame, frame_detections, context)
+
+                else:
+                    # When postprocessing stages are configured (including any
+                    # video-level stages), buffer detections for the whole
+                    # video, then apply stages in the configured order.
+                    frames: List[object] = []  # store frames only if needed for visualisation
+                    contexts: List[object] = []
+                    detections_per_frame: List[List[object]] = []
+
+                    for frame_idx, (frame, context) in enumerate(frame_iter):
+                        if frame_skip > 1 and frame_idx % frame_skip != 0:
+                            continue
+
+                        frame_detections = list(detector.process_frame(frame, context))
+
+                        # Buffer for later processing
+                        if self._visualiser is not None:
+                            frames.append(frame)
+                        contexts.append(context)
+                        detections_per_frame.append(frame_detections)
+
+                    # Apply stages in order on the buffered detections.
+                    for stage in self._postprocess_stages:
+                        if stage.kind == "video":
+                            # Frames/contexts are optional; pass only detections
+                            # and metadata to avoid unnecessary buffering
+                            detections_per_frame = stage.impl.process_video(
+                                detections_per_frame,
+                                metadata,
+                            )
+                        else:  # "frame"
+                            impl = stage.impl
+                            impl.reset_for_video(metadata)
+                            for i, (ctx, dets) in enumerate(
+                                zip(contexts, detections_per_frame)
+                            ):
+                                detections_per_frame[i] = impl.process_frame(dets, ctx)
+                            impl.finalize_video()
+
+                    # After all stages, write and visualise using the final detections.
+                    for idx, (context, frame_detections) in enumerate(
+                        zip(contexts, detections_per_frame)
+                    ):
+                        frame = frames[idx] if self._visualiser is not None else None
+
+                        for detection in frame_detections:
+                            writer.write(detection)
+                            detection_count += 1
+
+                        if self._visualiser is not None and frame is not None:
+                            self._visualiser.process_frame(frame, frame_detections, context)
         finally:
             # End visualisation for this source
             if self._visualiser is not None:
