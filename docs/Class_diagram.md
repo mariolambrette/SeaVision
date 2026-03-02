@@ -448,3 +448,82 @@ flowchart LR
 
     H --> I[run_pipeline.py]
 ```
+
+---
+
+## 3) Pipeline Flow Diagram (Runtime + Options)
+
+```mermaid
+flowchart TB
+  START([CLI / API Entry]) --> CFG[Load PipelineConfig\nfrom YAML/CLI]
+  CFG --> DISCOVER{Discover Sources}
+
+  DISCOVER --> LOCAL[discover_local_videos]
+  DISCOVER --> S3[discover_s3_videos]
+
+  LOCAL --> SOURCES[(VideoSource list)]
+  S3 --> SOURCES
+
+  SOURCES --> LOOP{{For each source}}
+  LOOP --> META[get_metadata]
+  META --> FRAMES[iter_frames]
+
+  FRAMES --> DETSEL{Detector type}
+  DETSEL --> MOTION[MotionDetector]
+  DETSEL --> YOLO[YOLODetector]
+  DETSEL --> SAM3[SAM3Detector]
+
+  SAM3 --> SAM3MODE{Prompt mode}
+  SAM3MODE --> PTEXT[TEXT]
+  SAM3MODE --> PBOX[BOX]
+  SAM3MODE --> PPOINT[POINT]
+  SAM3MODE --> PDETECTOR[DETECTOR / hybrid]
+
+  MOTION --> DETS[List~Detection~]
+  YOLO --> DETS
+  PTEXT --> DETS
+  PBOX --> DETS
+  PPOINT --> DETS
+  PDETECTOR --> DETS
+
+  DETS --> POSTCFG{Postprocess stages configured?}
+  POSTCFG -->|No| DIRECT[Direct write + optional live visualise]
+  POSTCFG -->|Yes| BUFFER[Buffer detections per frame]
+
+  BUFFER --> FRAMEPP[Frame stages\nLabelFilter / PerFrameNmsPostprocessor]
+  FRAMEPP --> VIDEOPP[Video stages\nMotionTrackVideoPostprocessor]
+  VIDEOPP --> FINALDETS[Final detections per frame]
+
+  DIRECT --> WRITE
+  FINALDETS --> WRITE
+
+  WRITE[DetectionWriter\nCSV per-video or single-file] --> VISCFG{Live visualiser enabled?}
+  VISCFG -->|No| NEXT{More sources?}
+  VISCFG -->|Yes| LIVE[LiveVisualiser]
+
+  LIVE --> LIVEOUT{Visualiser output_mode}
+  LIVEOUT --> VFILE[FILE\nVideoWriterHandle only]
+  LIVEOUT --> VSTREAM[STREAM\nAnnotatedFrame yield]
+  LIVEOUT --> VBOTH[BOTH\nwrite + yield]
+
+  VFILE --> NEXT
+  VSTREAM --> NEXT
+  VBOTH --> NEXT
+  WRITE --> NEXT
+
+  NEXT -->|Yes| LOOP
+  NEXT -->|No| DONE([PipelineResult])
+
+  %% Post-hoc visualisation route
+  DONE --> POSTHOC{Post-hoc visualisation run?}
+  POSTHOC -->|No| END([End])
+  POSTHOC -->|Yes| LOADSRC[PostHocVisualiser]
+  LOADSRC --> DSRC{DetectionSource}
+  DSRC --> DCSV[CSVDetectionLoader]
+  DSRC --> DITER[IteratorDetectionSource]
+  DSRC --> DLIST[ListDetectionSource]
+  DCSV --> PHFLOW[FrameAnnotator + VideoWriterHandle]
+  DITER --> PHFLOW
+  DLIST --> PHFLOW
+  PHFLOW --> END
+```
