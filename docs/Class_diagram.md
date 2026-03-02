@@ -534,94 +534,94 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-  subgraph P["Pipeline Orchestration"]
+  subgraph P[Pipeline Orchestration]
     PC[PipelineConfig]
     DP[DetectionPipeline]
     PC --> DP
   end
 
-  subgraph S["Source Layer: engine.source"]
-    VS[VideoSource - ABC]
+  subgraph S[Source Layer]
+    VS[VideoSource ABC]
     LVS[LocalVideoSource]
     SVS[S3VideoSource]
     VM[VideoMetadata]
     FC[FrameContext]
-    LVS -.implements.-> VS
-    SVS -.implements.-> VS
+    LVS -.-> VS
+    SVS -.-> VS
   end
 
-  subgraph D["Detector Layer: engine.detectors"]
-    DB[DetectorBase - ABC]
+  subgraph D[Detector Layer]
+    DB[DetectorBase ABC]
     MD[MotionDetector]
     YD[YOLODetector]
     SD[SAM3Detector]
     SND[SAM3NativeDetector]
     DET[Detection]
-    MD -.implements.-> DB
-    YD -.implements.-> DB
-    SD -.implements.-> DB
-    SND -.implements.-> DB
+    MD -.-> DB
+    YD -.-> DB
+    SD -.-> DB
+    SND -.-> DB
   end
 
-  subgraph PP["Postprocess Layer: engine.postprocessor"]
+  subgraph PP[Postprocess Layer]
     FPS[FramePostprocessor]
     VPS[VideoPostprocessor]
     LF[LabelFilter]
     NMS[PerFrameNmsPostprocessor]
     MTV[MotionTrackVideoPostprocessor]
     DW[DetectionWriter]
-    LF -.implements.-> FPS
-    NMS -.implements.-> FPS
-    MTV -.implements.-> VPS
+    LF -.-> FPS
+    NMS -.-> FPS
+    MTV -.-> VPS
   end
 
-  subgraph V["Visualisation Layer: engine.visualiser"]
+  subgraph V[Visualisation Layer]
     LV[LiveVisualiser]
     FA[FrameAnnotator]
     VWH[VideoWriterHandle]
     PHV[PostHocVisualiser]
-    DS[DetectionSource - ABC]
+    DS[DetectionSource ABC]
     CSVL[CSVDetectionLoader]
     IDS[IteratorDetectionSource]
     LDS[ListDetectionSource]
     AF[AnnotatedFrame]
     VR[VisualisationResult]
-    CSVL -.implements.-> DS
-    IDS -.implements.-> DS
-    LDS -.implements.-> DS
+    CSVL -.-> DS
+    IDS -.-> DS
+    LDS -.-> DS
   end
 
-  DP -->|owns/opens| VS
-  VS -->|get_metadata()| VM
-  VS -->|iter_frames()| FDATA[(frame ndarray)]
-  VS -->|iter_frames() context| FC
+  DP --> VS
+  VS --> VM
+  VS --> FR[Frame ndarray]
+  VS --> FC
 
-  DP -->|creates via registry| DB
-  FDATA -->|process_frame(frame, context)| DB
-  FC -->|process_frame(frame, context)| DB
-  DB -->|yields| DET
+  DP --> DB
+  FR --> DB
+  FC --> DB
+  DB --> DET
 
-  DET -->|per-frame transforms| FPS
+  DET --> FPS
   FPS --> DET
-  DET -->|full-video transforms| VPS
+  DET --> VPS
   VPS --> DET
 
-  DET -->|write()/write_batch()| DW
+  DET --> DW
 
-  DP -->|optional| LV
-  FDATA -->|annotate_frame() input| LV
-  DET -->|annotate_frame() input| LV
-  FC -->|annotate_frame() input| LV
+  DP --> LV
+  FR --> LV
+  DET --> LV
+  FC --> LV
   LV --> FA
-  FA -->|annotated ndarray| LV
-  LV -->|file output| VWH
-  LV -->|stream output| AF
-  LV -->|end_video()| VR
+  FA --> LV
+  LV --> VWH
+  LV --> AF
+  LV --> VR
 
-  DW -->|CSV output| CSV[(detections.csv)]
+  DW --> CSV[detections csv]
   CSV --> CSVL
-  PHV -->|reads detections via| DS
+  PHV --> DS
   PHV --> FA
   PHV --> VWH
-  PHV -->|streams| AF
+  PHV --> AF
 ```
