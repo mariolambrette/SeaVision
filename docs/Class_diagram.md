@@ -534,59 +534,94 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-  A[Config + CLI/API entry] --> B{Source discovery}
-  B --> B1[Local: discover_local_videos]
-  B --> B2[S3: discover_s3_videos]
-  B1 --> C[(VideoSource list)]
-  B2 --> C
+  subgraph P[Pipeline Orchestration]
+    PC[PipelineConfig]
+    DP[DetectionPipeline]
+    PC --> DP
+  end
 
-  C --> D[Per-source frame iteration\nget_metadata + iter_frames]
-  D --> E{Detector}
+  subgraph S[Source Layer (engine.source)]
+    VS[VideoSource (ABC)]
+    LVS[LocalVideoSource]
+    SVS[S3VideoSource]
+    VM[VideoMetadata]
+    FC[FrameContext]
+    LVS -.implements.-> VS
+    SVS -.implements.-> VS
+  end
 
-  E --> E1[MotionDetector]
-  E --> E2[YOLODetector]
-  E --> E3[SAM3Detector]
-  E3 --> E3a{SAM3 prompt mode}
-  E3a --> E3a1[TEXT]
-  E3a --> E3a2[BOX]
-  E3a --> E3a3[POINT]
-  E3a --> E3a4[DETECTOR / hybrid]
+  subgraph D[Detector Layer (engine.detectors)]
+    DB[DetectorBase (ABC)]
+    MD[MotionDetector]
+    YD[YOLODetector]
+    SD[SAM3Detector]
+    SND[SAM3NativeDetector]
+    DET[Detection]
+    MD -.implements.-> DB
+    YD -.implements.-> DB
+    SD -.implements.-> DB
+    SND -.implements.-> DB
+  end
 
-  E1 --> F[List of Detection]
-  E2 --> F
-  E3a1 --> F
-  E3a2 --> F
-  E3a3 --> F
-  E3a4 --> F
+  subgraph PP[Postprocess Layer (engine.postprocessor)]
+    FPS[FramePostprocessor]
+    VPS[VideoPostprocessor]
+    LF[LabelFilter]
+    NMS[PerFrameNmsPostprocessor]
+    MTV[MotionTrackVideoPostprocessor]
+    DW[DetectionWriter]
+    LF -.implements.-> FPS
+    NMS -.implements.-> FPS
+    MTV -.implements.-> VPS
+  end
 
-  F --> G{Postprocess configured?}
-  G -->|No| H[Direct path]
-  G -->|Yes| I[Buffered path]
+  subgraph V[Visualisation Layer (engine.visualiser)]
+    LV[LiveVisualiser]
+    FA[FrameAnnotator]
+    VWH[VideoWriterHandle]
+    PHV[PostHocVisualiser]
+    DS[DetectionSource (ABC)]
+    CSVL[CSVDetectionLoader]
+    IDS[IteratorDetectionSource]
+    LDS[ListDetectionSource]
+    AF[AnnotatedFrame]
+    VR[VisualisationResult]
+    CSVL -.implements.-> DS
+    IDS -.implements.-> DS
+    LDS -.implements.-> DS
+  end
 
-  I --> I1[Frame stages:\nLabelFilter, PerFrameNmsPostprocessor]
-  I1 --> I2[Video stages:\nMotionTrackVideoPostprocessor]
-  I2 --> H
+  DP -->|owns/opens| VS
+  VS -->|get_metadata()| VM
+  VS -->|iter_frames()| FDATA[(frame ndarray)]
+  VS -->|iter_frames() context| FC
 
-  H --> J[DetectionWriter\nCSV single-file or per-video]
-  J --> K{Live visualiser enabled?}
-  K -->|No| M[PipelineResult]
-  K -->|Yes| L{LiveVisualiser output mode}
-  L --> L1[FILE]
-  L --> L2[STREAM]
-  L --> L3[BOTH]
-  L1 --> M
-  L2 --> M
-  L3 --> M
+  DP -->|creates via registry| DB
+  FDATA -->|process_frame(frame, context)| DB
+  FC -->|process_frame(frame, context)| DB
+  DB -->|yields| DET
 
-  M --> N{Optional post-hoc visualisation}
-  N -->|No| O([End])
-  N -->|Yes| P[PostHocVisualiser]
-  P --> Q{DetectionSource}
-  Q --> Q1[CSVDetectionLoader]
-  Q --> Q2[IteratorDetectionSource]
-  Q --> Q3[ListDetectionSource]
-  Q1 --> R[FrameAnnotator + VideoWriterHandle]
-  Q2 --> R
-  Q3 --> R
-  R --> O
+  DET -->|per-frame transforms| FPS
+  FPS --> DET
+  DET -->|full-video transforms| VPS
+  VPS --> DET
+
+  DET -->|write()/write_batch()| DW
+
+  DP -->|optional| LV
+  FDATA -->|annotate_frame() input| LV
+  DET -->|annotate_frame() input| LV
+  FC -->|annotate_frame() input| LV
+  LV --> FA
+  FA -->|annotated ndarray| LV
+  LV -->|file output| VWH
+  LV -->|stream output| AF
+  LV -->|end_video()| VR
+
+  DW -->|CSV output| CSV[(detections.csv)]
+  CSV --> CSVL
+  PHV -->|reads detections via| DS
+  PHV --> FA
+  PHV --> VWH
+  PHV -->|streams| AF
 ```
