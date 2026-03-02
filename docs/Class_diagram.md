@@ -534,14 +534,14 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-  subgraph P[Pipeline Orchestration]
+  subgraph P["Pipeline Orchestration"]
     PC[PipelineConfig]
     DP[DetectionPipeline]
     PC --> DP
   end
 
-  subgraph S[Source Layer (engine.source)]
-    VS[VideoSource (ABC)]
+  subgraph S["Source Layer: engine.source"]
+    VS[VideoSource - ABC]
     LVS[LocalVideoSource]
     SVS[S3VideoSource]
     VM[VideoMetadata]
@@ -550,8 +550,8 @@ flowchart LR
     SVS -.implements.-> VS
   end
 
-  subgraph D[Detector Layer (engine.detectors)]
-    DB[DetectorBase (ABC)]
+  subgraph D["Detector Layer: engine.detectors"]
+    DB[DetectorBase - ABC]
     MD[MotionDetector]
     YD[YOLODetector]
     SD[SAM3Detector]
@@ -563,7 +563,7 @@ flowchart LR
     SND -.implements.-> DB
   end
 
-  subgraph PP[Postprocess Layer (engine.postprocessor)]
+  subgraph PP["Postprocess Layer: engine.postprocessor"]
     FPS[FramePostprocessor]
     VPS[VideoPostprocessor]
     LF[LabelFilter]
@@ -575,12 +575,12 @@ flowchart LR
     MTV -.implements.-> VPS
   end
 
-  subgraph V[Visualisation Layer (engine.visualiser)]
+  subgraph V["Visualisation Layer: engine.visualiser"]
     LV[LiveVisualiser]
     FA[FrameAnnotator]
     VWH[VideoWriterHandle]
     PHV[PostHocVisualiser]
-    DS[DetectionSource (ABC)]
+    DS[DetectionSource - ABC]
     CSVL[CSVDetectionLoader]
     IDS[IteratorDetectionSource]
     LDS[ListDetectionSource]
