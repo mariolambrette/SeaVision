@@ -1,1750 +1,520 @@
-# SeaVision API Reference
+# SeaVision Class & API Reference
 
-Complete API documentation for all classes, functions, and data structures in the SeaVision package.
+Updated for the current SeaVision package layout.
 
 ---
 
 ## Table of Contents
 
-- [Video Sources](#video-sources)
-  - [VideoMetadata](#videometadata)
-  - [FrameContext](#framecontext)
-  - [VideoSource](#videosource)
-  - [LocalVideoSource](#localvideosource)
-  - [S3VideoSource](#s3videosource)
-- [Discovery Functions](#discovery-functions)
-  - [discover_local_videos](#discover_local_videos)
-  - [discover_s3_videos](#discover_s3_videos)
-- [Detectors](#detectors)
-  - [Detection](#detection)
-  - [DetectorBase](#detectorbase)
-  - [MotionDetector](#motiondetector)
-  - [MotionDetectorConfig](#motiondetectorconfig)
-- [Motion Detection Components](#motion-detection-components)
-  - [FrameStabiliser](#framestabiliser)
-  - [StabiliserConfig](#stabiliserconfig)
-  - [BackgroundModel](#backgroundmodel)
-  - [BackgroundConfig](#backgroundconfig)
-  - [PersistenceTracker](#persistencetracker)
-  - [TrackerConfig](#trackerconfig)
-  - [TrackedObject](#trackedobject)
-- [Postprocessor](#postprocessor)
-  - [DetectionWriter](#detectionwriter)
-  - [PostprocessorConfig](#postprocessorconfig)
-  - [OutputMode](#outputmode-postprocessor)
-- [Visualiser](#visualiser)
-  - [LiveVisualiser](#livevisualiser)
-  - [PostHocVisualiser](#posthocvisualiser)
-  - [FrameAnnotator](#frameannotator)
-  - [VideoWriterHandle](#videowriterhandle)
-  - [AnnotatedFrame](#annotatedframe)
-  - [VisualisationResult](#visualisationresult)
-- [Visualiser Configuration](#visualiser-configuration)
-  - [VisualiserConfig](#visualiserconfig)
-  - [VideoOutputConfig](#videooutputconfig)
-  - [BoundingBoxStyle](#boundingboxstyle)
-  - [LabelStyle](#labelstyle)
-  - [OverlayStyle](#overlaystyle)
-  - [OutputMode](#outputmode-visualiser)
-  - [LabelPosition](#labelposition)
-- [Detection Loaders](#detection-loaders)
-  - [DetectionSource](#detectionsource)
-  - [CSVDetectionLoader](#csvdetectionloader)
-  - [FrameDetections](#framedetections)
-  - [IteratorDetectionSource](#iteratordetectionsource)
-  - [ListDetectionSource](#listdetectionsource)
-- [Pipeline](#pipeline)
-  - [DetectionPipeline](#detectionpipeline)
-  - [PipelineConfig](#pipelineconfig)
-  - [InputConfig](#inputconfig)
-  - [DetectorConfig](#detectorconfig)
-  - [PipelineResult](#pipelineresult)
-  - [DryRunResult](#dryrunresult)
-- [Utility Functions](#utility-functions)
+- [Package Exports](#package-exports)
+- [Video Sources (`engine.source`)](#video-sources-enginesource)
+- [Core Detection API (`engine.detectors.base`)](#core-detection-api-enginedetectorsbase)
+- [Motion Detector (`engine.detectors.motion`)](#motion-detector-enginedetectorsmotion)
+- [YOLO Detector (`engine.detectors.yolo`)](#yolo-detector-enginedetectorsyolo)
+- [SAM3 Detectors (`engine.detectors.sam3`)](#sam3-detectors-enginedetectorssam3)
+- [Postprocessing & CSV Output (`engine.postprocessor`)](#postprocessing--csv-output-enginepostprocessor)
+- [Visualiser (`engine.visualiser`)](#visualiser-enginevisualiser)
+- [Pipeline (`pipeline.py`)](#pipeline-pipelinepy)
+- [Top-Level Functions](#top-level-functions)
 
 ---
 
-## Video Sources
+## Package Exports
 
-### VideoMetadata
+### `engine`
 
-```python
-from engine.source import VideoMetadata
-```
+`engine.__init__` currently re-exports:
 
+- **Sources:** `FrameContext`, `VideoMetadata`, `VideoSource`, `LocalVideoSource`, `S3VideoSource`, `discover_local_videos`, `discover_s3_videos`
+- **Detection base:** `Detection`, `DetectorBase`
+- **Postprocessing:** `OutputMode`, `CSVWriterConfig`, `DetectionWriter`, `FramePostprocessor`, `VideoPostprocessor`, `LabelFilterConfig`, `LabelFilter`, `PerFrameNmsConfig`, `PerFrameNmsPostprocessor`, `MotionTrackVideoConfig`, `MotionTrackVideoPostprocessor`, `PostprocessStage`, `build_postprocess_stages`
+
+### `engine.detectors`
+
+`engine.detectors.__init__` always exports:
+
+- `Detection`, `DetectorBase`
+
+Conditionally exported (when dependencies are available):
+
+- **SAM3 stack:** `SAM3Detector`, `SAM3DetectorConfig`, `PromptType`, `HybridStrategy`, `PrompterConfig`, `PromptConfig`
+- **YOLO stack:** `YOLODetector`, `YOLODetectorConfig`
+
+### `engine.visualiser`
+
+`engine.visualiser.__init__` exports config, writer helpers, loaders, and both visualiser orchestrators.
+
+---
+
+## Video Sources (`engine.source`)
+
+### `VideoMetadata` (dataclass)
 **Module:** `engine.source.base`
 
-**Type:** `dataclass`
+Attributes:
+- `source_file: str`
+- `fps: float`
+- `frame_count: int`
+- `width: int`
+- `height: int`
+- `duration: float`
 
-Container for video file metadata properties.
-
-#### Attributes
-
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `source_file` | `str` | Path or URI of the original source file |
-| `fps` | `float` | Frames per second of the video |
-| `frame_count` | `int` | Total number of frames in the video |
-| `width` | `int` | Width of the video frames in pixels |
-| `height` | `int` | Height of the video frames in pixels |
-| `duration` | `float` | Duration of the video in seconds |
-
----
-
-### FrameContext
-
-```python
-from engine.source import FrameContext
-```
-
+### `FrameContext` (dataclass)
 **Module:** `engine.source.base`
 
-**Type:** `dataclass`
+Attributes:
+- `source_file: str`
+- `frame_number: int`
+- `timestamp: float`
+- `fps: float`
 
-Context information passed with each frame to detectors.
-
-#### Attributes
-
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `source_file` | `str` | Path or identifier of the source video |
-| `frame_number` | `int` | Frame index within the video (0-indexed) |
-| `timestamp` | `float` | Timestamp within the video in seconds from start |
-| `fps` | `float` | Frames per second of the source video |
-
----
-
-### VideoSource
-
-```python
-from engine.source import VideoSource
-```
-
+### `VideoSource` (ABC)
 **Module:** `engine.source.base`
 
-**Type:** `ABC` (Abstract Base Class)
+Abstract methods:
+- `iter_frames() -> Iterator[Tuple[np.ndarray, FrameContext]]`
+- `get_metadata() -> VideoMetadata`
 
-Abstract base class for video sources. Provides a common interface for loading video frames from different backends.
+Concrete methods:
+- `close() -> None`
+- context manager support (`__enter__`, `__exit__`)
 
-#### Abstract Methods
-
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `iter_frames()` | None | `Iterator[Tuple[np.ndarray, FrameContext]]` | Iterate over frames yielding (frame, context) tuples |
-| `get_metadata()` | None | `VideoMetadata` | Get metadata about the video source |
-
-#### Methods
-
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `close()` | None | `None` | Release any resources held by the source |
-| `__enter__()` | None | `VideoSource` | Context manager entry |
-| `__exit__()` | exc_type, exc_val, exc_tb | `bool` | Context manager exit with cleanup |
-
----
-
-### LocalVideoSource
-
-```python
-from engine.source import LocalVideoSource
-```
-
+### `LocalVideoSource` (`VideoSource`)
 **Module:** `engine.source.local`
 
-**Type:** `class` (extends `VideoSource`)
+Constructor:
+- `LocalVideoSource(filepath: str)`
 
-Loads video frames from a local file using OpenCV.
+Key methods:
+- `get_metadata() -> VideoMetadata`
+- `iter_frames() -> Iterator[Tuple[np.ndarray, FrameContext]]`
+- `process_gopro(processed_path: Path, overwrite: bool = False) -> None`
+- `close() -> None`
 
-#### Constructor
-
-```python
-LocalVideoSource(filepath: str)
-```
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `filepath` | `str` | Path to the local video file |
-
-**Raises:** `ValueError` if the video file cannot be opened.
-
-#### Attributes
-
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `filepath` | `str` | Path to the local video file |
-
-#### Methods
-
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `get_metadata()` | None | `VideoMetadata` | Get metadata about the video file |
-| `iter_frames()` | None | `Iterator[Tuple[np.ndarray, FrameContext]]` | Iterate over frames in the video |
-| `process_gopro(processed_path, overwrite=False)` | `Path`, `bool` | `None` | Strip audio stream from GoPro video using ffmpeg |
-| `close()` | None | `None` | Release the video capture resource |
-
-#### Example
-
-```python
-with LocalVideoSource("footage/clip_001.ts") as source:
-    metadata = source.get_metadata()
-    print(f"Processing {metadata.duration:.1f}s video")
-    
-    for frame, context in source.iter_frames():
-        # process frame
-        pass
-```
-
----
-
-### S3VideoSource
-
-```python
-from engine.source import S3VideoSource
-```
-
+### `S3VideoSource` (`VideoSource`)
 **Module:** `engine.source.s3`
 
-**Type:** `class` (extends `VideoSource`)
+Constructor:
+- `S3VideoSource(uri, presigned_url_expiry=14400, region_name=None, profile_name=None, endpoint_url=None)`
 
-Loads video frames from an AWS S3 bucket using pre-signed URLs and OpenCV HTTP streaming.
+Key methods:
+- `get_metadata() -> VideoMetadata`
+- `iter_frames() -> Iterator[Tuple[np.ndarray, FrameContext]]`
+- `close() -> None`
 
-#### Constructor
+### `parse_s3_uri` (function)
+**Module:** `engine.source.s3`
 
-```python
-S3VideoSource(
-    uri: str,
-    presigned_url_expiry: int = 14400,
-    region_name: Optional[str] = None,
-    profile_name: Optional[str] = None
-)
-```
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `uri` | `str` | required | S3 URI (e.g., `"s3://bucket/path/video.ts"`) |
-| `presigned_url_expiry` | `int` | `14400` | Pre-signed URL expiry time in seconds (default: 4 hours) |
-| `region_name` | `Optional[str]` | `None` | AWS region name |
-| `profile_name` | `Optional[str]` | `None` | AWS SSO profile name for authentication |
-
-**Raises:**
-- `ImportError` if boto3 is not installed
-- `ValueError` if the URI is invalid
-
-#### Attributes
-
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `uri` | `str` | S3 URI to the video file |
-| `bucket` | `str` | S3 bucket name (parsed from URI) |
-| `key` | `str` | S3 object key (parsed from URI) |
-| `presigned_url_expiry` | `int` | Pre-signed URL expiry time |
-
-#### Methods
-
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `get_metadata()` | None | `VideoMetadata` | Get metadata about the video file |
-| `iter_frames()` | None | `Iterator[Tuple[np.ndarray, FrameContext]]` | Iterate over frames in the video |
-| `close()` | None | `None` | Release the video capture resource |
-
-#### Example
-
-```python
-with S3VideoSource("s3://my-bucket/footage/clip_001.ts", profile_name="my-profile") as source:
-    metadata = source.get_metadata()
-    for frame, context in source.iter_frames():
-        # process frame
-        pass
-```
+- `parse_s3_uri(uri: str) -> Tuple[str, str]`
 
 ---
 
-## Discovery Functions
+## Core Detection API (`engine.detectors.base`)
 
-### discover_local_videos
-
-```python
-from engine.source import discover_local_videos
-```
-
-**Module:** `engine.source.discovery`
-
-Discover video files on the local file system.
-
-#### Signature
-
-```python
-def discover_local_videos(
-    path: str,
-    pattern: str = "*.ts"
-) -> List[VideoSource]
-```
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `path` | `str` | required | Path to a video file or directory containing videos |
-| `pattern` | `str` | `"*.ts"` | Glob pattern to match video files in directories |
-
-**Returns:** `List[LocalVideoSource]` - List of unopened video source instances.
-
-**Raises:**
-- `FileNotFoundError` if the path does not exist
-- `ValueError` if no video files are found in the directory
-
----
-
-### discover_s3_videos
-
-```python
-from engine.source import discover_s3_videos
-```
-
-**Module:** `engine.source.discovery`
-
-Discover video files in an S3 bucket.
-
-#### Signature
-
-```python
-def discover_s3_videos(
-    bucket: str,
-    prefix: str = "",
-    pattern: str = "*.ts",
-    region_name: Optional[str] = None,
-    profile_name: Optional[str] = None
-) -> List[VideoSource]
-```
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `bucket` | `str` | required | S3 bucket name |
-| `prefix` | `str` | `""` | Key prefix to filter objects |
-| `pattern` | `str` | `"*.ts"` | Glob pattern for matching video filenames |
-| `region_name` | `Optional[str]` | `None` | AWS region name |
-| `profile_name` | `Optional[str]` | `None` | AWS SSO profile name |
-
-**Returns:** `List[S3VideoSource]` - List of S3VideoSource instances (not yet connected).
-
-**Raises:**
-- `ImportError` if boto3 is not installed
-- `ValueError` if no matching video files are found
-
----
-
-## Detectors
-
-### Detection
-
-```python
-from engine.detectors import Detection
-```
-
+### `Detection` (dataclass)
 **Module:** `engine.detectors.base`
 
-**Type:** `dataclass`
+Attributes:
+- Required geometry/context: `source_file`, `timestamp`, `frame_number`, `xc`, `yc`, `width`, `height`
+- Optional metadata: `confidence`, `label`, `track_id`, `mask`, `metadata`
 
-Represents a single detection in a video frame.
+Key methods/properties:
+- `to_csv_row() -> dict`
+- `bbox -> tuple` (x1, y1, x2, y2)
+- `area -> float`
+- `from_bbox(...) -> Detection` (classmethod)
 
-#### Attributes
-
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `source_file` | `str` | Path of the original source file |
-| `timestamp` | `float` | Timestamp within the video (seconds from start) |
-| `frame_number` | `int` | Frame index within the video |
-| `xc` | `float` | X coordinate of the detection center (pixels) |
-| `yc` | `float` | Y coordinate of the detection center (pixels) |
-| `width` | `float` | Width of the detection bounding box (pixels) |
-| `height` | `float` | Height of the detection bounding box (pixels) |
-| `confidence` | `Optional[float]` | Confidence score (0.0 to 1.0), or None if not applicable |
-
-#### Methods
-
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `to_csv_row()` | None | `dict` | Convert the detection to a CSV row dictionary |
-
----
-
-### DetectorBase
-
-```python
-from engine.detectors import DetectorBase
-```
-
+### `DetectorBase` (ABC)
 **Module:** `engine.detectors.base`
 
-**Type:** `ABC` (Abstract Base Class)
+Abstract method:
+- `process_frame(frame, context) -> Iterator[Detection]`
 
-Abstract base class for all detectors.
-
-#### Abstract Methods
-
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `process_frame(frame, context)` | `np.ndarray`, `FrameContext` | `Iterator[Detection]` | Process a frame and yield detections |
-
-#### Methods
-
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `reset()` | None | `None` | Reset detector state for a new video file |
-| `__enter__()` | None | `DetectorBase` | Context manager entry |
-| `__exit__()` | exc_type, exc_val, exc_tb | `bool` | Context manager exit with cleanup |
+Base methods:
+- `reset() -> None`
+- context manager support (`__enter__`, `__exit__`)
 
 ---
 
-### MotionDetector
+## Motion Detector (`engine.detectors.motion`)
 
-```python
-from engine.detectors.motion import MotionDetector
-```
-
-**Module:** `engine.detectors.motion.detector`
-
-**Type:** `class` (extends `DetectorBase`)
-
-Detects motion in video frames using background subtraction with optional stabilisation.
-
-#### Constructor
-
-```python
-MotionDetector(config: Optional[MotionDetectorConfig] = None)
-```
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `config` | `Optional[MotionDetectorConfig]` | `None` | Configuration for the motion detector |
-
-#### Attributes
-
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `config` | `MotionDetectorConfig` | Current configuration |
-
-#### Methods
-
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `process_frame(frame, context)` | `np.ndarray`, `FrameContext` | `Iterator[Detection]` | Process a frame and yield motion detections |
-| `reset()` | None | `None` | Reset internal state between videos |
-
-#### Pipeline Stages
-
-1. **Stabilisation** (optional) - Compensate for camera motion
-2. **Background subtraction** - MOG2 adaptive model
-3. **Morphological cleaning** - Remove noise, fill gaps
-4. **Contour extraction** - Find candidate blobs
-5. **Size filtering** - Reject too small/large
-6. **Persistence filtering** - Require consistent tracks
-
----
-
-### MotionDetectorConfig
-
-```python
-from engine.detectors.motion import MotionDetectorConfig
-```
-
-**Module:** `engine.detectors.motion.detector`
-
-**Type:** `dataclass`
-
-Configuration for the motion detector.
-
-#### Attributes
-
-| Attribute | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `stabiliser` | `StabiliserConfig` | `StabiliserConfig()` | Frame stabiliser configuration |
-| `background` | `BackgroundConfig` | `BackgroundConfig()` | Background subtraction configuration |
-| `stabilisation_enabled` | `bool` | `True` | Enable frame stabilisation |
-| `min_area` | `int` | `100` | Minimum contour area in pixels |
-| `max_area` | `int` | `50000` | Maximum contour area in pixels |
-| `morph_kernel_size` | `int` | `5` | Kernel size for morphological operations |
-| `morph_iterations` | `int` | `2` | Number of morphological iterations |
-| `persistence_enabled` | `bool` | `True` | Enable persistence filtering |
-| `min_persistence` | `int` | `3` | Frames before emitting detection |
-| `max_frames_missing` | `int` | `5` | Frames before dropping track |
-| `iou_threshold` | `float` | `0.3` | Minimum IoU to match detections |
-
----
-
-## Motion Detection Components
-
-### FrameStabiliser
-
-```python
-from engine.detectors.motion import FrameStabiliser
-```
-
+### `StabiliserConfig` (dataclass)
 **Module:** `engine.detectors.motion.stabiliser`
 
-**Type:** `class`
+- `feature_detector`, `max_features`, `match_ratio`, `min_matches`, `ransac_threshold`
 
-Stabilises frames by aligning to the previous frame using feature-based homography.
-
-#### Constructor
-
-```python
-FrameStabiliser(config: Optional[StabiliserConfig] = None)
-```
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `config` | `Optional[StabiliserConfig]` | `None` | Stabiliser configuration |
-
-#### Attributes
-
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `config` | `StabiliserConfig` | Current configuration |
-
-#### Methods
-
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `stabilise(frame)` | `np.ndarray` | `Tuple[np.ndarray, bool]` | Stabilise a frame, returns (frame, was_stabilised) |
-| `reset()` | None | `None` | Reset the stabiliser state |
-
----
-
-### StabiliserConfig
-
-```python
-from engine.detectors.motion import StabiliserConfig
-```
-
+### `FrameStabiliser`
 **Module:** `engine.detectors.motion.stabiliser`
 
-**Type:** `dataclass`
+- `stabilise(frame) -> Tuple[np.ndarray, bool]`
+- `reset() -> None`
 
-Configuration for frame stabilisation.
-
-#### Attributes
-
-| Attribute | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `feature_detector` | `str` | `"ORB"` | Feature detector type (`"ORB"` or `"AKAZE"`) |
-| `max_features` | `int` | `500` | Maximum number of features to detect |
-| `match_ratio` | `float` | `0.75` | Lowe's ratio test threshold for feature matching |
-| `min_matches` | `int` | `10` | Minimum matches to compute homography |
-| `ransac_threshold` | `float` | `5.0` | RANSAC reprojection threshold |
-
----
-
-### BackgroundModel
-
-```python
-from engine.detectors.motion import BackgroundModel
-```
-
+### `BackgroundConfig` (dataclass)
 **Module:** `engine.detectors.motion.background`
 
-**Type:** `class`
+- `history`, `var_threshold`, `detect_shadows`, `learning_rate`
 
-Adaptive background subtraction using MOG2 algorithm.
-
-#### Constructor
-
-```python
-BackgroundModel(config: Optional[BackgroundConfig] = None)
-```
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `config` | `Optional[BackgroundConfig]` | `None` | Background model configuration |
-
-#### Attributes
-
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `config` | `BackgroundConfig` | Current configuration |
-
-#### Methods
-
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `apply(frame)` | `np.ndarray` | `np.ndarray` | Apply background subtraction, returns binary mask |
-| `reset()` | None | `None` | Reset the background model |
-
----
-
-### BackgroundConfig
-
-```python
-from engine.detectors.motion import BackgroundConfig
-```
-
+### `BackgroundModel`
 **Module:** `engine.detectors.motion.background`
 
-**Type:** `dataclass`
+- `apply(frame) -> np.ndarray`
+- `reset() -> None`
 
-Configuration for background subtraction.
-
-#### Attributes
-
-| Attribute | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `history` | `int` | `600` | Frames used to build background model |
-| `var_threshold` | `float` | `16.0` | Variance threshold for foreground classification |
-| `detect_shadows` | `bool` | `True` | Whether to detect shadows |
-| `learning_rate` | `float` | `-1.0` | Learning rate (-1 for auto, or 0.0-1.0) |
-
----
-
-### PersistenceTracker
-
-```python
-from engine.detectors.motion.tracker import PersistenceTracker
-```
-
+### `TrackerConfig` (dataclass)
 **Module:** `engine.detectors.motion.tracker`
 
-**Type:** `class`
+- `min_persistence`, `max_frames_missing`, `iou_threshold`
 
-Tracks detections across frames and filters out transient noise.
-
-#### Constructor
-
-```python
-PersistenceTracker(config: Optional[TrackerConfig] = None)
-```
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `config` | `Optional[TrackerConfig]` | `None` | Tracker configuration |
-
-#### Attributes
-
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `config` | `TrackerConfig` | Current configuration |
-
-#### Methods
-
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `update(detections)` | `List[dict]` | `List[TrackedObject]` | Update tracker with new detections, returns confirmed tracks |
-| `reset()` | None | `None` | Reset tracker state for a new video |
-
----
-
-### TrackerConfig
-
-```python
-from engine.detectors.motion.tracker import TrackerConfig
-```
-
+### `TrackedObject` (dataclass)
 **Module:** `engine.detectors.motion.tracker`
 
-**Type:** `dataclass`
+- `update(xc, yc, width, height) -> None`
+- `mark_missed() -> None`
+- `bbox -> Tuple[float, float, float, float]`
 
-Configuration for the persistence tracker.
-
-#### Attributes
-
-| Attribute | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `min_persistence` | `int` | `3` | Frames before emitting detection |
-| `max_frames_missing` | `int` | `5` | Frames before dropping track |
-| `iou_threshold` | `float` | `0.3` | Minimum IoU to match detections |
-
----
-
-### TrackedObject
-
-```python
-from engine.detectors.motion.tracker import TrackedObject
-```
-
+### `PersistenceTracker`
 **Module:** `engine.detectors.motion.tracker`
 
-**Type:** `dataclass`
+- `update(detections: List[dict]) -> List[TrackedObject]`
+- `reset() -> None`
 
-A tracked detection across multiple frames.
+### `MotionDetectorConfig` (dataclass)
+**Module:** `engine.detectors.motion.detector`
 
-#### Attributes
+Includes:
+- Sub-configs: `stabiliser`, `background`
+- Motion extraction: `stabilisation_enabled`, `min_area`, `max_area`, `morph_kernel_size`, `morph_iterations`
+- Persistence filtering: `persistence_enabled`, `min_persistence`, `max_frames_missing`, `iou_threshold`
 
-| Attribute | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `track_id` | `int` | required | Unique track identifier |
-| `xc` | `float` | required | X coordinate of center |
-| `yc` | `float` | required | Y coordinate of center |
-| `width` | `float` | required | Bounding box width |
-| `height` | `float` | required | Bounding box height |
-| `age` | `int` | `1` | Frames since first seen |
-| `frames_since_update` | `int` | `0` | Frames since last matched |
+### `MotionDetector` (`DetectorBase`)
+**Module:** `engine.detectors.motion.detector`
 
-#### Properties
+- `process_frame(frame, context) -> Iterator[Detection]`
+- `reset() -> None`
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `bbox` | `Tuple[float, float, float, float]` | Bounding box as (x1, y1, x2, y2) |
+### `compute_iou` (function)
+**Module:** `engine.detectors.motion.tracker`
 
-#### Methods
-
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `update(xc, yc, width, height)` | `float` × 4 | `None` | Update with new detection data |
-| `mark_missed()` | None | `None` | Mark that no detection matched this frame |
+- `compute_iou(box1, box2) -> float`
 
 ---
 
-## Postprocessor
+## YOLO Detector (`engine.detectors.yolo`)
 
-### DetectionWriter
+### `YOLODetectorConfig` (dataclass)
+**Module:** `engine.detectors.yolo.config`
 
-```python
-from engine import DetectionWriter
-```
+- `model_path`, `device`, `imgsz`
+- `conf_threshold`, `iou_threshold`, `max_detections`
+- `classes`, `output_labels`
+- `half`, `verbose`
 
-**Module:** `engine.postprocessor`
+### `YOLODetector` (`DetectorBase`)
+**Module:** `engine.detectors.yolo.detector`
 
-**Type:** `class`
-
-Writes detection results to CSV files.
-
-#### Constructor
-
-```python
-DetectionWriter(config: Optional[PostprocessorConfig] = None)
-```
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `config` | `Optional[PostprocessorConfig]` | `None` | Output configuration |
-
-#### Properties
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `detection_count` | `int` | Total number of detections written |
-
-#### Methods
-
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `write(detection)` | `Detection` | `None` | Write a single detection to CSV |
-| `write_batch(detections)` | `List[Detection]` | `None` | Write a batch of detections |
-| `finalise_video(source_file)` | `str` | `None` | Ensure CSV created even if no detections |
-| `close()` | None | `None` | Close any open files |
-| `__enter__()` | None | `DetectionWriter` | Context manager entry |
-| `__exit__()` | exc_type, exc_val, exc_tb | `bool` | Context manager exit |
-
-#### Example
-
-```python
-config = PostprocessorConfig(
-    output_dir="./results",
-    output_mode=OutputMode.PER_VIDEO,
-    overwrite=True
-)
-
-with DetectionWriter(config) as writer:
-    for detection in detections:
-        writer.write(detection)
-```
+- Lazy-loads local Ultralytics weights
+- `process_frame(frame, context) -> Iterator[Detection]`
+- `reset() -> None`
 
 ---
 
-### PostprocessorConfig
+## SAM3 Detectors (`engine.detectors.sam3`)
 
-```python
-from engine import PostprocessorConfig
-```
+### Enums
 
-**Module:** `engine.postprocessor`
+#### `PromptType`
+**Module:** `engine.detectors.sam3.config`
 
-**Type:** `dataclass`
+Values:
+- `TEXT`
+- `BOX`
+- `POINT`
+- `DETECTOR`
 
-Configuration for the detection postprocessor.
+#### `HybridStrategy`
+**Module:** `engine.detectors.sam3.config`
 
-#### Attributes
+Values:
+- `BOX_REFINEMENT`
+- `CLASSIFY_REGIONS`
 
-| Attribute | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `output_dir` | `str` | `"./output"` | Directory for CSV output |
-| `output_mode` | `OutputMode` | `OutputMode.PER_VIDEO` | Single file or per-video output |
-| `single_file_name` | `str` | `"detections.csv"` | Filename for single file mode |
-| `overwrite` | `bool` | `False` | Whether to overwrite existing files |
+### Config Dataclasses
 
----
+#### `PrompterConfig`
+**Module:** `engine.detectors.sam3.config`
 
-### OutputMode (Postprocessor)
+- `detector_type`, `detector_config`
+- `strategy`
+- `text_prompts`
+- `min_iou_with_prompt`
 
-```python
-from engine import OutputMode
-```
+#### `PromptConfig`
+**Module:** `engine.detectors.sam3.config`
 
-**Module:** `engine.postprocessor`
+- Prompt type + mode-specific prompt fields:
+  - `text_prompts`
+  - `box_prompts`, `box_labels`
+  - `point_prompts`, `point_labels`
+  - `prompter` (for detector/hybrid mode)
+- Video prompt policy:
+  - `reprompt_interval`
+  - `reprompt_on_lost`
 
-**Type:** `Enum`
+#### `SAM3DetectorConfig`
+**Module:** `engine.detectors.sam3.config`
 
-Output mode for detection results.
+- Model/runtime: `checkpoint`, `device`, `half`, `imgsz`
+- Prompting: `prompts`, `prompt_config`
+- Filtering: `confidence_threshold`, `min_mask_area`, `max_mask_area`
+- Behaviour/output: `video_mode`, `output_masks`, `output_labels`
+- Helper: `get_ultralytics_overrides() -> Dict`
 
-#### Values
+### `SAM3Detector` (`DetectorBase`)
+**Module:** `engine.detectors.sam3.detector`
 
-| Value | Description |
-|-------|-------------|
-| `SINGLE_FILE` | All detections in one CSV file |
-| `PER_VIDEO` | Separate CSV file for each video |
+Supports TEXT / BOX / POINT / DETECTOR (hybrid) prompt workflows.
 
----
+Public methods:
+- `process_frame(frame, context) -> Iterator[Detection]`
+- `add_exemplar(box=None, point=None, positive=True) -> None`
+- `clear_exemplars() -> None`
+- `reset() -> None`
+- context manager support (`__enter__`, `__exit__`)
 
-## Visualiser
+### `SAM3NativeDetector` (`DetectorBase`)
+**Module:** `engine.detectors.sam3.native`
 
-### LiveVisualiser
+Native Transformers-based backend for SAM3 (currently TEXT prompt mode).
 
-```python
-from engine.visualiser import LiveVisualiser
-```
-
-**Module:** `engine.visualiser.visualiser`
-
-**Type:** `class`
-
-Visualiser for integration with the detection pipeline. Called frame-by-frame as detections are generated.
-
-#### Constructor
-
-```python
-LiveVisualiser(
-    config: Optional[VisualiserConfig] = None,
-    name_function: Optional[OutputNameFunction] = None
-)
-```
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `config` | `Optional[VisualiserConfig]` | `None` | Visualisation configuration |
-| `name_function` | `Optional[OutputNameFunction]` | `None` | Custom output filename function |
-
-#### Methods
-
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `start_video(metadata)` | `VideoMetadata` | `None` | Begin visualisation for a new video |
-| `process_frame(frame, detections, context)` | `np.ndarray`, `List[Detection]`, `FrameContext` | `Optional[AnnotatedFrame]` | Process a frame with detections |
-| `end_video()` | None | `VisualisationResult` | Finish visualisation for current video |
-| `__enter__()` | None | `LiveVisualiser` | Context manager entry |
-| `__exit__()` | exc_type, exc_val, exc_tb | `bool` | Context manager exit |
-
-#### Example
-
-```python
-visualiser = LiveVisualiser(config)
-
-for source in sources:
-    visualiser.start_video(source.get_metadata())
-    
-    for frame, context in source.iter_frames():
-        detections = list(detector.process_frame(frame, context))
-        annotated = visualiser.process_frame(frame, detections, context)
-    
-    result = visualiser.end_video()
-    print(result.summary())
-```
+Public methods:
+- `process_frame(frame, context) -> Iterator[Detection]`
+- `reset() -> None`
 
 ---
 
-### PostHocVisualiser
+## Postprocessing & CSV Output (`engine.postprocessor`)
 
-```python
-from engine.visualiser import PostHocVisualiser
-```
+### `OutputMode` (Enum)
+Values:
+- `SINGLE_FILE`
+- `PER_VIDEO`
 
-**Module:** `engine.visualiser.visualiser`
+### `CSVWriterConfig` (dataclass)
+- `output_dir`, `output_mode`, `single_file_name`, `overwrite`
 
-**Type:** `class`
+### Postprocessor Protocols
 
-Visualiser for post-hoc processing from CSV detection files.
+#### `FramePostprocessor` (Protocol)
+- `reset_for_video(metadata) -> None`
+- `process_frame(detections, context) -> List[Detection]`
+- `finalize_video() -> None`
 
-#### Constructor
+#### `VideoPostprocessor` (Protocol)
+- `process_video(detections_per_frame, metadata, frames=None, contexts=None) -> List[List[Detection]]`
 
-```python
-PostHocVisualiser(
-    config: Optional[VisualiserConfig] = None,
-    name_function: Optional[OutputNameFunction] = None
-)
-```
+### Built-in Frame Postprocessors
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `config` | `Optional[VisualiserConfig]` | `None` | Visualisation configuration |
-| `name_function` | `Optional[OutputNameFunction]` | `None` | Custom output filename function |
+#### `LabelFilterConfig` (dataclass)
+- `keep_labels`, `drop_labels`
 
-#### Methods
+#### `LabelFilter` (`FramePostprocessor`)
+- `process_frame(...) -> List[Detection]`
 
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `visualise(video_source, csv_path)` | `VideoSource`, `str` | `Iterator[AnnotatedFrame]` | Visualise video with detections from CSV |
-| `visualise_from_source(video_source, detection_source)` | `VideoSource`, `DetectionSource` | `Iterator[AnnotatedFrame]` | Visualise with custom detection source |
+#### `PerFrameNmsConfig` (dataclass)
+- `iou_threshold`, `class_agnostic`
+
+#### `PerFrameNmsPostprocessor` (`FramePostprocessor`)
+- `process_frame(...) -> List[Detection]`
+
+### Built-in Video Postprocessor
+
+#### `MotionTrackVideoConfig` (dataclass)
+- `window_seconds`, `threshold_fraction`
+
+#### `MotionTrackVideoPostprocessor` (`VideoPostprocessor`)
+- Drops track IDs with insufficient displacement over time.
+
+### Stage Wiring
+
+#### `PostprocessStage` (dataclass)
+- `kind: Literal["frame", "video"]`
+- `impl: object`
+
+#### `PostprocessorFactory` (TypedDict)
+- `kind`
+- `build`
+
+#### `build_postprocess_stages(config_dict) -> List[PostprocessStage]`
+- Builds ordered stages from YAML-style config.
+
+### `DetectionWriter`
+
+Writes detections in CSV format.
+
+Methods:
+- `write(detection) -> None`
+- `write_batch(detections) -> None`
+- `finalise_video(source_file) -> None`
+- `close() -> None`
+- `detection_count` (property)
+- context manager support (`__enter__`, `__exit__`)
 
 ---
 
-### FrameAnnotator
+## Visualiser (`engine.visualiser`)
 
-```python
-from engine.visualiser import FrameAnnotator
-```
+### Config Enums
 
+#### `OutputMode` (`engine.visualiser.config`)
+- `FILE`
+- `STREAM`
+- `BOTH`
+
+#### `LabelPosition` (`engine.visualiser.config`)
+- `TOP_LEFT`, `TOP_RIGHT`, `BOTTOM_LEFT`, `BOTTOM_RIGHT`, `ABOVE`, `BELOW`
+
+### Visual Style Dataclasses
+
+#### `BoundingBoxStyle`
+- `draw_box`, `colour`, `thickness`, `draw_centre`, `centre_radius`, `centre_colour`, `class_colours`
+
+#### `LabelStyle`
+- `enabled`, `font_scale`, `font_thickness`, `colour`, `background_colour`, `position`, `padding`
+- `show_label`, `show_confidence`, `show_frame_number`, `custom_format`
+
+#### `OverlayStyle`
+- `enabled`, `show_frame_number`, `show_timestamp`, `show_detection_count`
+- font and placement fields
+
+#### `VideoOutputConfig`
+- `output_dir`, `filename_suffix`, `codec`, `format`, `fps`, `overwrite`, `include_parent_dirs`
+
+#### `VisualiserConfig`
+- `output_mode`, style configs, `min_confidence`, `only_frames_with_detections`, `frame_skip`
+
+### Rendering / IO Components
+
+#### `FrameAnnotator`
 **Module:** `engine.visualiser.annotator`
 
-**Type:** `class`
+- `annotate_frame(frame, detections, context=None, copy=True) -> np.ndarray`
 
-Draws detection annotations on video frames. Stateless and reusable across frames and videos.
-
-#### Constructor
-
-```python
-FrameAnnotator(
-    bbox_style: Optional[BoundingBoxStyle] = None,
-    label_style: Optional[LabelStyle] = None,
-    overlay_style: Optional[OverlayStyle] = None
-)
-```
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `bbox_style` | `Optional[BoundingBoxStyle]` | `None` | Bounding box rendering style |
-| `label_style` | `Optional[LabelStyle]` | `None` | Label rendering style |
-| `overlay_style` | `Optional[OverlayStyle]` | `None` | Frame overlay style |
-
-#### Methods
-
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `annotate_frame(frame, detections, context, copy)` | `np.ndarray`, `List[Detection]`, `Optional[FrameContext]`, `bool` | `np.ndarray` | Draw detections and overlays on frame |
-
----
-
-### VideoWriterHandle
-
-```python
-from engine.visualiser import VideoWriterHandle
-```
-
+#### `VideoWriterHandle` (dataclass)
 **Module:** `engine.visualiser.writer`
 
-**Type:** `dataclass`
+- Handles output filename derivation + `cv2.VideoWriter` lifecycle
+- `write(frame) -> None`
+- `close() -> None`
+- properties: `frame_count`, `output_path`
 
-Manages the lifecycle of a video file writer.
+Writer helpers:
+- `extract_output_stem(source_file, include_parents=2) -> str`
+- `sanitise_filename(name) -> str`
+- `OutputNameFunction` type alias
 
-#### Constructor
+### Detection Loader Abstractions
 
-```python
-VideoWriterHandle(
-    config: VideoOutputConfig,
-    metadata: VideoMetadata,
-    name_function: Optional[OutputNameFunction] = None
-)
-```
+#### `DetectionSource` (ABC)
+**Module:** `engine.visualiser.loader`
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `config` | `VideoOutputConfig` | required | Video output configuration |
-| `metadata` | `VideoMetadata` | required | Source video metadata |
-| `name_function` | `Optional[OutputNameFunction]` | `None` | Custom output filename function |
+- `get_detections_for_frame(frame_number)`
+- `get_source_file()`
+- `get_frame_numbers_with_detections()`
+- convenience methods: total count / frame count
 
-#### Properties
+#### `FrameDetections` (dataclass)
+- in-memory frame-indexed detection container
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `frame_count` | `int` | Number of frames written |
-| `output_path` | `Optional[Path]` | Output file path |
+#### `CSVDetectionLoader` (`DetectionSource`)
+- CSV-backed detection source with source-file filtering
 
-#### Methods
+#### `IteratorDetectionSource` / `ListDetectionSource` (`DetectionSource`)
+- wrappers for iterator/list-backed detections
 
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `write(frame)` | `np.ndarray` | `None` | Write a frame to the video file |
-| `close()` | None | `None` | Release the video writer resource |
-| `__enter__()` | None | `VideoWriterHandle` | Context manager entry |
-| `__exit__()` | exc_type, exc_val, exc_tb | `bool` | Context manager exit |
+#### `load_detections_from_csv(csv_path, source_file=None) -> FrameDetections`
 
----
+### Orchestrators
 
-### AnnotatedFrame
-
-```python
-from engine.visualiser import AnnotatedFrame
-```
-
+#### `AnnotatedFrame` (dataclass)
 **Module:** `engine.visualiser.visualiser`
 
-**Type:** `dataclass`
+- `frame`, `frame_number`, `timestamp`, `detections`, `source_file`
 
-Container for an annotated frame (for streaming output).
+#### `VisualisationResult` (dataclass)
+- summary stats + `summary() -> str`
 
-#### Attributes
+#### `LiveVisualiser`
+- `start_video(metadata) -> None`
+- `process_frame(frame, detections, context) -> Optional[AnnotatedFrame]`
+- `end_video() -> VisualisationResult`
 
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `frame` | `np.ndarray` | Annotated BGR image |
-| `frame_number` | `int` | Frame index |
-| `timestamp` | `float` | Timestamp in seconds |
-| `detections` | `List[Detection]` | Detections in this frame |
-| `source_file` | `str` | Source video path/URI |
-
----
-
-### VisualisationResult
-
-```python
-from engine.visualiser import VisualisationResult
-```
-
-**Module:** `engine.visualiser.visualiser`
-
-**Type:** `dataclass`
-
-Result statistics from visualisation.
-
-#### Attributes
-
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `source_file` | `str` | Source video path/URI |
-| `output_path` | `Optional[str]` | Output video path (None if stream only) |
-| `total_frames` | `int` | Total frames processed |
-| `frames_with_detections` | `int` | Frames containing detections |
-| `total_detections` | `int` | Total detection count |
-
-#### Methods
-
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `summary()` | None | `str` | Human-readable summary |
+#### `PostHocVisualiser`
+- `visualise(video_source, csv_path) -> Iterator[AnnotatedFrame]`
+- `visualise_from_source(video_source, detection_source) -> Iterator[AnnotatedFrame]`
 
 ---
 
-## Visualiser Configuration
+## Pipeline (`pipeline.py`)
 
-### VisualiserConfig
+### Config and Result Dataclasses
 
-```python
-from engine.visualiser import VisualiserConfig
-```
+#### `InputConfig`
+- `frame_skip`
 
-**Module:** `engine.visualiser.config`
+#### `DetectorConfig`
+- `type`
+- `config` (detector-specific dictionary)
 
-**Type:** `dataclass`
+#### `PipelineConfig`
+- `input`, `output`, `detector`, `resume`, `visualiser`, `postprocess`
+- `from_dict(data) -> PipelineConfig`
 
-Main configuration for the visualiser module.
+#### `DryRunResult`
+- scan statistics
+- `summary() -> str`
 
-#### Attributes
+#### `PipelineResult`
+- processing statistics + failures
+- `summary() -> str`
 
-| Attribute | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `output_mode` | `OutputMode` | `OutputMode.FILE` | Output mode (FILE, STREAM, BOTH) |
-| `video_output` | `VideoOutputConfig` | `VideoOutputConfig()` | Video file output settings |
-| `bbox_style` | `BoundingBoxStyle` | `BoundingBoxStyle()` | Bounding box style |
-| `label_style` | `LabelStyle` | `LabelStyle()` | Label style |
-| `overlay_style` | `OverlayStyle` | `OverlayStyle()` | Frame overlay style |
-| `min_confidence` | `Optional[float]` | `None` | Minimum confidence to visualise |
-| `only_frames_with_detections` | `bool` | `False` | Only visualise frames with detections |
-| `frame_skip` | `int` | `1` | Process every Nth frame |
+### `DetectionPipeline`
 
----
+Core orchestration class for source processing.
 
-### VideoOutputConfig
+Public methods:
+- `process_sources(sources, dry_run=False) -> Union[PipelineResult, DryRunResult]`
 
-```python
-from engine.visualiser import VideoOutputConfig
-```
+Internal key methods (important for extension):
+- detector creation from registry (`_create_detector_from_config`)
+- dry-run/source skip logic (`_dry_run`, `_should_skip_source`)
+- execution path (`_process_sources`, `_process_single_source`)
 
-**Module:** `engine.visualiser.config`
+### Detector Registry Utilities
 
-**Type:** `dataclass`
+- `register_detector(name, detector_class, config_parser)`
+- built-in registrations include `motion` and conditional `sam3`
 
-Configuration for video file output.
+### Logging Utility
 
-#### Attributes
-
-| Attribute | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `output_dir` | `str` | `"./visualised_output"` | Output directory |
-| `filename_suffix` | `str` | `"_visualised"` | Suffix added to filename stem |
-| `codec` | `str` | `"mp4v"` | FourCC codec string |
-| `format` | `str` | `".mp4"` | Output file extension |
-| `fps` | `Optional[float]` | `None` | Output FPS (None = match source) |
-| `overwrite` | `bool` | `False` | Overwrite existing files |
-| `include_parent_dirs` | `int` | `2` | Parent directory levels in output name |
+- `setup_logging(level=logging.INFO) -> None`
 
 ---
 
-### BoundingBoxStyle
-
-```python
-from engine.visualiser import BoundingBoxStyle
-```
-
-**Module:** `engine.visualiser.config`
-
-**Type:** `dataclass`
-
-Style configuration for bounding box rendering.
-
-#### Attributes
-
-| Attribute | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `draw_box` | `bool` | `True` | Whether to draw the bounding box |
-| `colour` | `Tuple[int, int, int]` | `(0, 255, 0)` | BGR colour for the box |
-| `thickness` | `int` | `2` | Line thickness in pixels |
-| `draw_centre` | `bool` | `False` | Whether to draw centre point |
-| `centre_radius` | `int` | `3` | Centre point radius |
-| `centre_colour` | `Tuple[int, int, int]` | `(0, 255, 0)` | BGR colour for centre |
-
----
-
-### LabelStyle
-
-```python
-from engine.visualiser import LabelStyle
-```
-
-**Module:** `engine.visualiser.config`
-
-**Type:** `dataclass`
-
-Style configuration for label rendering.
-
-#### Attributes
-
-| Attribute | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `enabled` | `bool` | `True` | Whether to draw labels |
-| `font_scale` | `float` | `0.5` | Font scale factor |
-| `font_thickness` | `int` | `1` | Font thickness |
-| `colour` | `Tuple[int, int, int]` | `(255, 255, 255)` | BGR text colour |
-| `background_colour` | `Optional[Tuple[int, int, int]]` | `(0, 0, 0)` | BGR background colour |
-| `position` | `LabelPosition` | `LabelPosition.TOP_LEFT` | Label position relative to box |
-| `padding` | `int` | `2` | Padding around text |
-| `show_confidence` | `bool` | `True` | Show confidence score |
-| `show_frame_number` | `bool` | `False` | Show frame number |
-| `custom_format` | `Optional[str]` | `None` | Custom format string |
-
----
-
-### OverlayStyle
-
-```python
-from engine.visualiser import OverlayStyle
-```
-
-**Module:** `engine.visualiser.config`
-
-**Type:** `dataclass`
-
-Style configuration for frame-level overlay information.
-
-#### Attributes
-
-| Attribute | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `enabled` | `bool` | `False` | Whether to draw overlay |
-| `show_frame_number` | `bool` | `True` | Show frame number |
-| `show_timestamp` | `bool` | `True` | Show timestamp |
-| `show_detection_count` | `bool` | `True` | Show detection count |
-| `font_scale` | `float` | `0.6` | Font scale factor |
-| `font_thickness` | `int` | `1` | Font thickness |
-| `colour` | `Tuple[int, int, int]` | `(255, 255, 255)` | BGR text colour |
-| `background_colour` | `Optional[Tuple[int, int, int]]` | `(0, 0, 0)` | BGR background colour |
-| `position` | `Tuple[int, int]` | `(10, 25)` | Top-left corner offset |
-
----
-
-### OutputMode (Visualiser)
-
-```python
-from engine.visualiser import OutputMode
-```
-
-**Module:** `engine.visualiser.config`
-
-**Type:** `Enum`
-
-Output mode for the visualiser.
-
-#### Values
-
-| Value | Description |
-|-------|-------------|
-| `FILE` | Write frames to video file |
-| `STREAM` | Yield frames for GUI integration |
-| `BOTH` | Write to file and yield for GUI |
-
----
-
-### LabelPosition
-
-```python
-from engine.visualiser import LabelPosition
-```
-
-**Module:** `engine.visualiser.config`
-
-**Type:** `Enum`
-
-Position of label relative to bounding box.
-
-#### Values
-
-| Value | Description |
-|-------|-------------|
-| `TOP_LEFT` | Top-left corner of bounding box |
-| `TOP_RIGHT` | Top-right corner of bounding box |
-| `BOTTOM_LEFT` | Bottom-left corner of bounding box |
-| `BOTTOM_RIGHT` | Bottom-right corner of bounding box |
-| `ABOVE` | Centered above the bounding box |
-| `BELOW` | Centered below the bounding box |
-
----
-
-## Detection Loaders
-
-### DetectionSource
-
-```python
-from engine.visualiser import DetectionSource
-```
-
-**Module:** `engine.visualiser.loader`
-
-**Type:** `ABC` (Abstract Base Class)
-
-Abstract base class for loading detections.
-
-#### Abstract Methods
-
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `get_detections_for_frame(frame_number)` | `int` | `List[Detection]` | Get detections for a specific frame |
-| `get_source_file()` | None | `str` | Get source video file path |
-| `get_frame_numbers_with_detections()` | None | `List[int]` | Get sorted list of frames with detections |
-
-#### Methods
-
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `get_total_detection_count()` | None | `int` | Get total detection count |
-| `get_frame_count_with_detections()` | None | `int` | Get number of frames with detections |
-
----
-
-### CSVDetectionLoader
-
-```python
-from engine.visualiser import CSVDetectionLoader
-```
-
-**Module:** `engine.visualiser.loader`
-
-**Type:** `class` (extends `DetectionSource`)
-
-Load detections from a CSV file.
-
-#### Constructor
-
-```python
-CSVDetectionLoader(
-    csv_path: str,
-    source_file: Optional[str] = None
-)
-```
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `csv_path` | `str` | required | Path to CSV file with detections |
-| `source_file` | `Optional[str]` | `None` | Filter to only load detections for this source |
-
-**Raises:**
-- `FileNotFoundError` if CSV file does not exist
-- `ValueError` if CSV is missing required columns
-
-#### Properties
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `csv_path` | `Path` | Path to the CSV file |
-| `sources_in_file` | `List[str]` | All source files found in the CSV |
-
-#### Required CSV Columns
-
-`source_file`, `timestamp`, `frame_number`, `xc`, `yc`, `width`, `height`
-
-#### Optional CSV Columns
-
-`confidence`
-
----
-
-### FrameDetections
-
-```python
-from engine.visualiser import FrameDetections
-```
-
-**Module:** `engine.visualiser.loader`
-
-**Type:** `dataclass`
-
-Container for detections grouped by frame number.
-
-#### Attributes
-
-| Attribute | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `source_file` | `str` | required | Path or URI of the source file |
-| `detections_by_frame` | `Dict[int, List[Detection]]` | `{}` | Detections indexed by frame number |
-
-#### Methods
-
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `get_detections_for_frame(frame_number)` | `int` | `List[Detection]` | Get detections for a frame |
-| `get_frame_numbers_with_detections()` | None | `List[int]` | Get sorted list of frames with detections |
-| `add_detection(detection)` | `Detection` | `None` | Add a detection to the appropriate frame |
-| `get_total_detection_count()` | None | `int` | Get total number of detections |
-
----
-
-### IteratorDetectionSource
-
-```python
-from engine.visualiser import IteratorDetectionSource
-```
-
-**Module:** `engine.visualiser.loader`
-
-**Type:** `class` (extends `DetectionSource`)
-
-Wrap an iterator of detections for use with visualiser. Buffers all detections in memory.
-
-#### Constructor
-
-```python
-IteratorDetectionSource(
-    detections: Iterator[Detection],
-    source_file: str
-)
-```
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `detections` | `Iterator[Detection]` | Iterator yielding Detection objects |
-| `source_file` | `str` | Source video file path/URI |
-
-**Note:** The iterator is fully consumed during initialisation.
-
----
-
-### ListDetectionSource
-
-```python
-from engine.visualiser import ListDetectionSource
-```
-
-**Module:** `engine.visualiser.loader`
-
-**Type:** `class` (extends `DetectionSource`)
-
-Create detection source from a list of detections.
-
-#### Constructor
-
-```python
-ListDetectionSource(
-    detections: List[Detection],
-    source_file: str
-)
-```
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `detections` | `List[Detection]` | List of Detection objects |
-| `source_file` | `str` | Source video file path/URI |
-
----
-
-## Pipeline
-
-### DetectionPipeline
-
-```python
-from pipeline import DetectionPipeline
-```
-
-**Module:** `pipeline`
-
-**Type:** `class`
-
-Main pipeline for processing videos and detecting objects.
-
-#### Constructor
-
-```python
-DetectionPipeline(
-    config: Optional[PipelineConfig] = None,
-    detector_factory: Optional[Callable[[], DetectorBase]] = None
-)
-```
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `config` | `Optional[PipelineConfig]` | `None` | Pipeline configuration |
-| `detector_factory` | `Optional[Callable[[], DetectorBase]]` | `None` | Factory function returning detector instances |
-
-#### Attributes
-
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `config` | `PipelineConfig` | Current configuration |
-
-#### Methods
-
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `process_sources(sources, dry_run)` | `List[VideoSource]`, `bool` | `PipelineResult` or `DryRunResult` | Process video sources |
-
-#### Example
-
-```python
-from engine import discover_local_videos
-from pipeline import DetectionPipeline, PipelineConfig
-
-sources = discover_local_videos("./data/footage/", "*.ts")
-config = PipelineConfig()
-pipeline = DetectionPipeline(config)
-result = pipeline.process_sources(sources)
-print(result.summary())
-```
-
----
-
-### PipelineConfig
-
-```python
-from pipeline import PipelineConfig
-```
-
-**Module:** `pipeline`
-
-**Type:** `dataclass`
-
-Configuration for the detection pipeline.
-
-#### Attributes
-
-| Attribute | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `input` | `InputConfig` | `InputConfig()` | Input processing configuration |
-| `output` | `PostprocessorConfig` | `PostprocessorConfig()` | Output configuration |
-| `detector` | `DetectorConfig` | `DetectorConfig()` | Detector configuration |
-| `resume` | `bool` | `True` | Skip videos with existing output files |
-| `visualiser` | `Optional[VisualiserConfig]` | `None` | Visualiser configuration |
-
-#### Class Methods
-
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `from_dict(data)` | `dict` | `PipelineConfig` | Create config from dictionary (e.g., YAML) |
-
----
-
-### InputConfig
-
-```python
-from pipeline import InputConfig
-```
-
-**Module:** `pipeline`
-
-**Type:** `dataclass`
-
-Configuration for pipeline input processing.
-
-#### Attributes
-
-| Attribute | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `frame_skip` | `int` | `1` | Process every Nth frame |
-
----
-
-### DetectorConfig
-
-```python
-from pipeline import DetectorConfig
-```
-
-**Module:** `pipeline`
-
-**Type:** `dataclass`
-
-Configuration for detector selection and settings.
-
-#### Attributes
-
-| Attribute | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `type` | `str` | `"motion"` | Detector type name |
-| `config` | `dict` | `{}` | Detector-specific configuration |
-
----
-
-### PipelineResult
-
-```python
-from pipeline import PipelineResult
-```
-
-**Module:** `pipeline`
-
-**Type:** `dataclass`
-
-Results from a pipeline run.
-
-#### Attributes
-
-| Attribute | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `videos_processed` | `int` | `0` | Videos successfully processed |
-| `videos_skipped` | `int` | `0` | Videos skipped (resume mode) |
-| `videos_failed` | `int` | `0` | Videos that failed processing |
-| `total_detections` | `int` | `0` | Total detections across all videos |
-| `elapsed_time` | `float` | `0.0` | Total elapsed time in seconds |
-| `detections_per_video` | `Dict` | `{}` | Video path → detection count |
-| `failed_videos` | `Dict` | `{}` | Video path → error message |
-
-#### Methods
-
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `summary()` | None | `str` | Human-readable summary |
-
----
-
-### DryRunResult
-
-```python
-from pipeline import DryRunResult
-```
-
-**Module:** `pipeline`
-
-**Type:** `dataclass`
-
-Results from a dry run.
-
-#### Attributes
-
-| Attribute | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `videos_found` | `int` | `0` | Number of video files found |
-| `videos_to_process` | `int` | `0` | Videos that would be processed |
-| `videos_skipped` | `int` | `0` | Videos that would be skipped |
-| `total_frames` | `int` | `0` | Total frames across all videos |
-| `total_duration` | `float` | `0.0` | Total duration in seconds |
-| `output_mode` | `str` | `""` | Output mode that would be used |
-| `output_dir` | `str` | `""` | Output directory |
-
-#### Methods
-
-| Method | Parameters | Returns | Description |
-|--------|------------|---------|-------------|
-| `summary()` | None | `str` | Human-readable summary |
-
----
-
-## Utility Functions
-
-### extract_output_stem
-
-```python
-from engine.visualiser import extract_output_stem
-```
-
-**Module:** `engine.visualiser.writer`
-
-Extract a suitable output filename stem from a source file path or URI.
-
-```python
-def extract_output_stem(
-    source_file: str,
-    include_parents: int = 2
-) -> str
-```
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `source_file` | `str` | required | Source file path or S3 URI |
-| `include_parents` | `int` | `2` | Parent directories to include |
-
-**Returns:** Sanitised string suitable for use as a filename stem.
-
----
-
-### sanitise_filename
-
-```python
-from engine.visualiser import sanitise_filename
-```
-
-**Module:** `engine.visualiser.writer`
-
-Sanitise a string to be safe for use as a filename.
-
-```python
-def sanitise_filename(name: str) -> str
-```
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `name` | `str` | Input string to sanitise |
-
-**Returns:** Sanitised filename string.
-
----
-
-### load_detections_from_csv
-
-```python
-from engine.visualiser import load_detections_from_csv
-```
-
-**Module:** `engine.visualiser.loader`
-
-Convenience function to load detections from CSV into a FrameDetections object.
-
-```python
-def load_detections_from_csv(
-    csv_path: str,
-    source_file: Optional[str] = None
-) -> FrameDetections
-```
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `csv_path` | `str` | required | Path to CSV file |
-| `source_file` | `Optional[str]` | `None` | Optional source file filter |
-
-**Returns:** `FrameDetections` container with loaded detections.
-
----
-
-### compute_iou
-
-```python
-from engine.detectors.motion.tracker import compute_iou
-```
-
-**Module:** `engine.detectors.motion.tracker`
-
-Compute Intersection over Union between two bounding boxes.
-
-```python
-def compute_iou(
-    box1: Tuple[float, float, float, float],
-    box2: Tuple[float, float, float, float]
-) -> float
-```
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `box1` | `Tuple[float, float, float, float]` | First box as (x1, y1, x2, y2) |
-| `box2` | `Tuple[float, float, float, float]` | Second box as (x1, y1, x2, y2) |
-
-**Returns:** IoU value between 0.0 and 1.0.
-
----
-
-### parse_s3_uri
-
-```python
-from engine.source.s3 import parse_s3_uri
-```
-
-**Module:** `engine.source.s3`
-
-Parse an S3 URI into bucket and key components.
-
-```python
-def parse_s3_uri(uri: str) -> Tuple[str, str]
-```
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `uri` | `str` | S3 URI (e.g., `"s3://bucket-name/path/to/file.ts"`) |
-
-**Returns:** Tuple of `(bucket_name, key)`.
-
-**Raises:** `ValueError` if the URI is not valid.
-
----
-
-### setup_logging
-
-```python
-from pipeline import setup_logging
-```
-
-**Module:** `pipeline`
-
-Set up basic logging configuration.
-
-```python
-def setup_logging(level: int = logging.INFO) -> None
-```
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `level` | `int` | `logging.INFO` | Logging level |
-
----
-
-### register_detector
-
-```python
-from pipeline import register_detector
-```
-
-**Module:** `pipeline`
-
-Register a detector type for use with YAML configuration.
-
-```python
-def register_detector(
-    name: str,
-    detector_class: Type[DetectorBase],
-    config_parser: Callable[[dict], object]
-) -> None
-```
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `name` | `str` | Name used in config files |
-| `detector_class` | `Type[DetectorBase]` | The detector class |
-| `config_parser` | `Callable[[dict], object]` | Function to parse config dict |
-
----
-
-## Type Aliases
-
-### OutputNameFunction
-
-```python
-from engine.visualiser import OutputNameFunction
-```
-
-**Module:** `engine.visualiser.writer`
-
-Type alias for custom output naming functions.
-
-```python
-OutputNameFunction = Callable[[VideoMetadata], str]
-```
-
-A function that takes `VideoMetadata` and returns a filename stem (without suffix or extension).
+## Top-Level Functions
+
+### Source discovery
+- `discover_local_videos(path, pattern="*.ts") -> List[VideoSource]`
+- `discover_s3_videos(bucket, prefix="", pattern="*.ts", region_name=None, profile_name=None, endpoint_url=None) -> List[VideoSource]`
+
+### Postprocessing stage builder
+- `build_postprocess_stages(config_dict) -> List[PostprocessStage]`
+
+### Visualiser loader utility
+- `load_detections_from_csv(csv_path, source_file=None) -> FrameDetections`
+
+### CLI (`run_pipeline.py`)
+- `parse_args()`
+- `load_config_file(config_path)`
+- `build_config(args) -> PipelineConfig`
+- `discover_sources(args, config_data=None)`
+- `main() -> int`

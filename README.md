@@ -74,6 +74,12 @@ The SeaVision pipeline can be fully cosutomised using YAML config files. For
 a documented example of a config file see the
 [default configuration](./config/default.yaml)
 
+## Documentation
+
+- [Class and API reference](./docs/Class_reference.md)
+- [Architecture and class diagrams](./docs/Class_diagram.md)
+- [AWS setup guide](./docs/AWS_SETUP.md)
+
 ## Project Status
 
 Note that this project is under [active development](./Bouy%20detection%20plan.md)

@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Buoy detection system pipeline (SeaVision)"
 readme = "README.md"
 requires-python = ">=3.9"
-authors = [{ name = "M3B Team" }]
+authors = [{ name = "Mario Lambrette" }]
 license = { text = "Proprietary" }
 keywords = ["computer-vision", "detection", "buoy"]
 classifiers = [
