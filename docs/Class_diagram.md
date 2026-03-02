@@ -527,3 +527,66 @@ flowchart TB
   DLIST --> PHFLOW
   PHFLOW --> END
 ```
+
+---
+
+## 4) Compact Horizontal Pipeline Diagram
+
+```mermaid
+flowchart LR
+  A[Config + CLI/API entry] --> B{Source discovery}
+  B --> B1[Local: discover_local_videos]
+  B --> B2[S3: discover_s3_videos]
+  B1 --> C[(VideoSource list)]
+  B2 --> C
+
+  C --> D[Per-source frame iteration\nget_metadata + iter_frames]
+  D --> E{Detector}
+
+  E --> E1[MotionDetector]
+  E --> E2[YOLODetector]
+  E --> E3[SAM3Detector]
+  E3 --> E3a{SAM3 prompt mode}
+  E3a --> E3a1[TEXT]
+  E3a --> E3a2[BOX]
+  E3a --> E3a3[POINT]
+  E3a --> E3a4[DETECTOR / hybrid]
+
+  E1 --> F[List of Detection]
+  E2 --> F
+  E3a1 --> F
+  E3a2 --> F
+  E3a3 --> F
+  E3a4 --> F
+
+  F --> G{Postprocess configured?}
+  G -->|No| H[Direct path]
+  G -->|Yes| I[Buffered path]
+
+  I --> I1[Frame stages:\nLabelFilter, PerFrameNmsPostprocessor]
+  I1 --> I2[Video stages:\nMotionTrackVideoPostprocessor]
+  I2 --> H
+
+  H --> J[DetectionWriter\nCSV single-file or per-video]
+  J --> K{Live visualiser enabled?}
+  K -->|No| M[PipelineResult]
+  K -->|Yes| L{LiveVisualiser output mode}
+  L --> L1[FILE]
+  L --> L2[STREAM]
+  L --> L3[BOTH]
+  L1 --> M
+  L2 --> M
+  L3 --> M
+
+  M --> N{Optional post-hoc visualisation}
+  N -->|No| O([End])
+  N -->|Yes| P[PostHocVisualiser]
+  P --> Q{DetectionSource}
+  Q --> Q1[CSVDetectionLoader]
+  Q --> Q2[IteratorDetectionSource]
+  Q --> Q3[ListDetectionSource]
+  Q1 --> R[FrameAnnotator + VideoWriterHandle]
+  Q2 --> R
+  Q3 --> R
+  R --> O
+```
