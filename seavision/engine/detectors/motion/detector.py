@@ -5,8 +5,8 @@ from typing import Dict, Iterator, Optional
 import cv2
 import numpy as np
 
-from engine.source import FrameContext
-from engine.detectors.base import Detection, DetectorBase
+from ...source import FrameContext
+from ..base import Detection, DetectorBase
 from .stabiliser import FrameStabiliser, StabiliserConfig
 from .background import BackgroundModel, BackgroundConfig
 

@@ -1,0 +1,3 @@
+[console_scripts]
+seavision = seavision.run_pipeline:main
+seavision-gui = seavision.gui.app:main

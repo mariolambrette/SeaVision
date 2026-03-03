@@ -7,7 +7,7 @@ This module defines all configuration options for the SAM3 detector, including:
 - Prompter configuration (for hybrid mode with other detectors)
 
 Example usage:
-    >>> from engine.detectors.sam3.config import (
+    >>> from seavision.engine.detectors.sam3.config import (
     ...     SAM3DetectorConfig,
     ...     PromptConfig,
     ...     PromptType,

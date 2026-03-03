@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "seavision"
 version = "0.1.0"
-description = "Buoy detection system pipeline (SeaVision)"
+description = "Human-in-the-loop Computer Vision for Marine Environments"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [{ name = "Mario Lambrette" }]
 license = { text = "Proprietary" }
-keywords = ["computer-vision", "detection", "buoy"]
+keywords = ["computer-vision", "detection", "marine", "SAM3"]
 classifiers = [
   "Programming Language :: Python",
   "Programming Language :: Python :: 3",
@@ -20,14 +20,12 @@ dependencies = []
 
 [project.optional-dependencies]
 # For development in this repo; install with: pip install -e .[dev]
-dev = [
-  "pytest",
-]
+dev = ["pytest"]
+gui = ["PySide6>=6.5"]
 
-[tool.setuptools]
-# Top-level single-file modules to install alongside packages
-py-modules = ["pipeline", "run_pipeline"]
+[project.scripts]
+seavision = "seavision.run_pipeline:main"
+seavision-gui = "seavision.gui.app:main"
 
 [tool.setuptools.packages.find]
-# Install the core engine package and its subpackages
-include = ["engine*"]
+include = ["seavision*"]

@@ -7,7 +7,7 @@ from typing import Dict, Iterator, List, Optional
 import csv
 import logging
 
-from engine.detectors.base import Detection
+from ..detectors.base import Detection
 
 logger = logging.getLogger(__name__)
 

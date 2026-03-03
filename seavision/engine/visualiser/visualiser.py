@@ -5,12 +5,12 @@ from pathlib import Path
 from typing import Callable, Iterator, List, Optional
 import numpy as np
 
-from engine.source.base import VideoSource, VideoMetadata, FrameContext
-from engine.detectors.base import Detection
-from engine.visualiser.config import VisualiserConfig, OutputMode
-from engine.visualiser.annotator import FrameAnnotator
-from engine.visualiser.writer import VideoWriterHandle, OutputNameFunction
-from engine.visualiser.loader import DetectionSource, CSVDetectionLoader
+from ..source.base import VideoSource, VideoMetadata, FrameContext
+from ..detectors.base import Detection
+from .config import VisualiserConfig, OutputMode
+from .annotator import FrameAnnotator
+from .writer import VideoWriterHandle, OutputNameFunction
+from .loader import DetectionSource, CSVDetectionLoader
 
 
 @dataclass
