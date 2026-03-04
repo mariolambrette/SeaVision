@@ -18,12 +18,9 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("SeaVision")
 
-    # Placeholder — we'll build the main window next
-    from PySide6.QtWidgets import QMainWindow, QLabel
-    window = QMainWindow()
-    window.setWindowTitle("SeaVision")
-    window.setCentralWidget(QLabel("SeaVision — Validation tab coming soon"))
-    window.resize(1200, 800)
+    from seavision.gui.main_window import MainWindow
+
+    window = MainWindow()
     window.show()
 
     sys.exit(app.exec())
