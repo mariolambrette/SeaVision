@@ -3,4 +3,4 @@
 pytest
 
 [gui]
-PySide6>=6.5
+PySide6<6.9,>=6.5

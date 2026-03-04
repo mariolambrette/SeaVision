@@ -38,4 +38,12 @@ seavision/engine/visualiser/visualiser.py
 seavision/engine/visualiser/writer.py
 seavision/gui/__init__.py
 seavision/gui/app.py
+seavision/gui/main_window.py
+seavision/gui/shared/__init__.py
+seavision/gui/shared/conversion.py
 seavision/gui/validation/__init__.py
+seavision/gui/validation/seekable_source.py
+seavision/gui/validation/tab.py
+seavision/gui/validation/transport_bar.py
+seavision/gui/validation/video_viewer.py
+seavision/gui/validation/video_worker.py

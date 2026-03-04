@@ -5,14 +5,15 @@ channels:
 dependencies:
   - python=3.10
   - numpy>=1.21
-  - opencv>=4.5
   - tqdm>=4.60
   - pyyaml>=6.0
-  - pip
   - boto3>=1.26
-  - ultralytics>=8.3.237
   - pytorch>=2.0
   - torchvision>=0.15
+  - pip
+  - pip:
+      - opencv-python-headless>=4.5
+      - ultralytics>=8.3.237
 
 
 # Add transformers>=4.47

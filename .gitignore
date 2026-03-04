@@ -26,6 +26,7 @@ tests/
 # VS Code
 .vscode/
 *.code-workspace
+*.vs/
 
 # PyCharm / JetBrains
 .idea/
