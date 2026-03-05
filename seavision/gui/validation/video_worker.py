@@ -19,7 +19,7 @@ class VideoDecoderWorker(QObject):
     frame_ready = Signal(object, int, float) # QImage, frame number, timestamp
 
     # Emited after a video is successfully opened
-    video_opened = Signal(object) # VideoMetadata
+    video_opened = Signal(object, int) # VideoMetadata max_seek_drift
 
     # Emitted when an error occurs
     error_occurred = Signal(str) # Error message
@@ -39,7 +39,10 @@ class VideoDecoderWorker(QObject):
         try:
             self.close_video()
             self._source = SeekableVideoSource(filepath)
-            self.video_opened.emit(self._source.metadata)
+            self.video_opened.emit(
+                self._source.metadata,
+                self._source.max_seek_drift
+            )
 
             # Show the first frame immediately
             self.request_frame(0)
@@ -69,7 +72,7 @@ class VideoDecoderWorker(QObject):
             return
         
         self._playing = True
-        self._source_seek(from_frame)
+        self._source.seek(from_frame)
         self._playback_tick()
 
     @Slot()

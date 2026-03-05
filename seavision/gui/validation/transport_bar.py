@@ -30,7 +30,7 @@ class TransportBar(QWidget):
         """
         Build the layout and connect signals.
         """
-        super.__init__(parent)
+        super().__init__(parent)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 2, 4, 2)

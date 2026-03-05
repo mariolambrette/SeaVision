@@ -16,7 +16,7 @@ def numpy_bgr_to_qimage(frame: np.ndarray) -> QImage:
             is freed).
 
     Raises:
-        ValueError: If the input array does not have 3 or 4 channels.
+        ValueError: If the input array is not 3D or does not have 3 channels
     """
 
     # Check the shape of the input array - images are 3D arrays
@@ -27,14 +27,10 @@ def numpy_bgr_to_qimage(frame: np.ndarray) -> QImage:
     
     height, width, channels = frame.shape
 
-    # Define the correct QImage formatter based on the number of channels
-    if channels == 3:
-        fmt = QImage.Format.Format_BGR888
-    elif channels == 4:
-        fmt = QImage.Format.Format_BGRA8888
-    else:
+    # Check there are three colour channels (BGR)
+    if channels != 3:
         raise ValueError(
-            f"Expected 3 (BGR) or 4 (BGRA) channels, got {channels}"
+            f"Expected 3 channels (BGR), got {channels}"
         )
     
     # Make the array contiguous in memory (C order) to ensure QImage can use it 
@@ -43,7 +39,13 @@ def numpy_bgr_to_qimage(frame: np.ndarray) -> QImage:
     bytes_per_line = channels * width
 
     # Create the QImage
-    image = QImage(frame.data, width, height, bytes_per_line, fmt)
+    image = QImage(
+        frame.data,
+        width, 
+        height, 
+        bytes_per_line,
+        QImage.Format.Format_BGR888
+    )
 
     # Use image.copy() to ensure the QImage owns its own data, so it remains 
     # valid even if the original numpy array is freed

@@ -73,12 +73,23 @@ class ValidationTab(QWidget):
         """Open a new video (called by Main Window)."""
         self._request_open.emit(filepath)
 
-    def _on_video_opened(self, metadata) -> None:
-        """Worker has opened a video - configure the UI."""
+    def _on_video_opened(self, metadata, max_seek_drift) -> None:
+        """Worker has opened a video — configure the UI."""
         self._metadata = metadata
         self._current_frame = 0
         self._is_playing = False
         self._transport.set_video_info(metadata)
+
+        # Warn the user if seek accuracy is poor for this file
+        if max_seek_drift > 2:
+            QMessageBox.information(
+                self,
+                "Seek Accuracy Warning",
+                f"This video format has low seek accuracy "
+                f"(up to {max_seek_drift} frames of drift).\n\n"
+                f"Detection overlays may appear slightly offset "
+                f"from their expected frames.",
+            )
 
     def _on_frame_received(self, image, frame_number, timestamp) -> None:
         """Worker has decoded a frame — update our bookkeeping."""

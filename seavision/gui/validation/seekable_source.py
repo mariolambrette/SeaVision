@@ -4,8 +4,8 @@ import cv2
 import numpy as np
 from pathlib import Path
 
-
 from seavision.engine.source.base import FrameContext, VideoMetadata
+
 
 class SeekableVideoSource:
     """
@@ -34,8 +34,19 @@ class SeekableVideoSource:
             raise ValueError(f"Failed to open video file: {filepath}")
         
         self._metadata = self._read_metadata()
+        self._max_seek_drift = 0
+        self._check_initial_seek_accuracy()
 
-    
+    def _check_initial_seek_accuracy(self) -> None:
+        """Seek to frame 0 and verify we land there."""
+        if self._metadata.frame_count < 2:
+            return
+        self._cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        ret, _ = self._cap.read()
+        if ret:
+            actual = int(self._cap.get(cv2.CAP_PROP_POS_FRAMES)) - 1
+            self._max_seek_drift = abs(actual - 0)
+
     def _read_metadata(self) -> VideoMetadata:
         """Read and cache the video metadata from the capture."""
 
@@ -99,11 +110,27 @@ class SeekableVideoSource:
         return frame, context
     
     def read_at(self, frame_number: int) -> tuple[np.ndarray, FrameContext] | None:
+        """Seek to a frame and read it in one call.
+
+        Also tracks seek accuracy — the maximum observed difference
+        between the requested frame and the actual frame landed on.
         """
-        Seek to a frame number and read it in one call."""
         self.seek(frame_number)
-        return self.read()
+        result = self.read()
+        if result is not None:
+            _, ctx = result
+            drift = abs(ctx.frame_number - frame_number)
+            if drift > self._max_seek_drift:
+                self._max_seek_drift = drift
+        return result
     
+    @property
+    def max_seek_drift(self) -> int:
+        """
+        Maximum observed difference between requested and actual frame.
+        """
+        return self._max_seek_drift
+
     def close(self) -> None:
         """Release the video capture."""
         if self._cap is not None:
