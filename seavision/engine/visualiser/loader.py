@@ -218,7 +218,7 @@ class CSVDetectionLoader(DetectionSource):
 
         logger.debug(f"Loading detections from CSV: {self._csv_path}")
 
-        with open(self._csv_path, "r", newline="", encoding="utf-8") as f:
+        with open(self._csv_path, "r", newline="", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
 
             # Validate columns
