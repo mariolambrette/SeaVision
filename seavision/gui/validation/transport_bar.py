@@ -27,6 +27,9 @@ class TransportBar(QWidget):
     seek_requested = Signal(int) # Frame number, fires during drag
     seek_commited = Signal(int) # Frame number, fires on slider release
 
+    prev_detection_clicked = Signal()
+    next_detection_clicked = Signal()
+
     def __init__(self, parent=None):
         """
         Build the layout and connect signals.
@@ -37,13 +40,24 @@ class TransportBar(QWidget):
         layout.setContentsMargins(4, 2, 4, 2)
 
         # --- Buttons ---
+        self._prev_det_btn = QPushButton("⏪")
+        self._prev_det_btn.setToolTip("Previous detection (Ctrl+Left)")
+        self._prev_det_btn.setFixedWidth(30)
+
         self._prev_btn = QPushButton("⏮")
+        self._prev_btn.setToolTip("Previous frame (Left)")
+        self._prev_btn.setFixedWidth(30)
+
         self._play_btn = QPushButton("▶/⏸")
+        self._play_btn.setFixedWidth(60)
+
         self._next_btn = QPushButton("⏭")
+        self._next_btn.setToolTip("Next frame (Right)")
+        self._next_btn.setFixedWidth(30)
 
-        for btn in (self._prev_btn, self._play_btn, self._next_btn):
-            btn.setFixedWidth(50)
-
+        self._next_det_btn = QPushButton("⏩")
+        self._next_det_btn.setToolTip("Next detection (Ctrl+Right)")
+        self._next_det_btn.setFixedWidth(30)
 
         # --- Seek slider ---
         self._slider = QSlider(Qt.Orientation.Horizontal)
@@ -57,23 +71,26 @@ class TransportBar(QWidget):
 
         
         # --- Assemble ---
+        layout.addWidget(self._prev_det_btn)
         layout.addWidget(self._prev_btn)
         layout.addWidget(self._play_btn)
         layout.addWidget(self._next_btn)
-        layout.addWidget(self._slider, stretch=1)
+        layout.addWidget(self._next_det_btn)
+        layout.addWidget(self._slider)
         layout.addWidget(self._frame_label)
         layout.addWidget(self._time_label)
 
         
         # --- Internal wiring ---
+        self._prev_det_btn.clicked.connect(self.prev_detection_clicked)
         self._prev_btn.clicked.connect(self.prev_frame_clicked)
         self._play_btn.clicked.connect(self.play_pause_clicked)
         self._next_btn.clicked.connect(self.next_frame_clicked)
+        self._next_det_btn.clicked.connect(self.next_detection_clicked)
         self._slider.sliderMoved.connect(self.seek_requested)
         self._slider.sliderReleased.connect(
             self._on_slider_released
         )
-
 
         # Disable until a video is loaded
         self.setEnabled(False)

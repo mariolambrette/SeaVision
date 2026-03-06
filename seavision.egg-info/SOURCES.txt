@@ -43,6 +43,8 @@ seavision/gui/shared/__init__.py
 seavision/gui/shared/conversion.py
 seavision/gui/shared/session_utils.py
 seavision/gui/validation/__init__.py
+seavision/gui/validation/detection_detail.py
+seavision/gui/validation/detection_table.py
 seavision/gui/validation/seekable_source.py
 seavision/gui/validation/tab.py
 seavision/gui/validation/transport_bar.py

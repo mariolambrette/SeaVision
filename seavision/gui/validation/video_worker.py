@@ -8,6 +8,8 @@ from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
 from seavision.gui.shared.conversion import numpy_bgr_to_qimage
 from seavision.gui.validation.seekable_source import SeekableVideoSource
+from seavision.engine.detectors import Detection
+from seavision.engine.source import FrameContext
 from seavision.engine.visualiser import FrameAnnotator
 from seavision.engine.visualiser.loader import DetectionSource
 
@@ -52,6 +54,10 @@ class VideoDecoderWorker(QObject):
 
         # Flag to skip pending seek requests
         self._skip_pending_seeks = False
+
+        # Selected detection index for highlighting (set externally by the
+        # main thread)
+        self._highlight_index: int = -1 #-1 = no highlight
 
 
     # --- PLAYBACK SLOT & METHODS ---
@@ -176,10 +182,24 @@ class VideoDecoderWorker(QObject):
             type(source).__name__ if source else "None"
         )
 
-    def _annotate_frame(self, frame, context):
+    @Slot(int)
+    def set_highlight_index(self, index: int) -> None:
         """
-        Annotate a frame with detection overlaps if a detection source is 
-        available. Returns the (possibly annotated) frame.
+        Set which detection to highlight with a distinct colour.
+
+        Args:
+            index: Index into the current frame's detection list, or -1 to clear
+                the highlight.
+        """
+        self._highlight_index = index
+
+    def _annotate_frame(self, frame, context: FrameContext):
+        """
+        Annotate a frame with detection overlays and optional highlight.
+
+        The standard FrameAnnotator draws all detections. If a highlight
+        index is set, we draw an additional rectangle on the selected
+        detection with a distinct colour and thicker line.
         """
 
         if self._detection_source is None:
@@ -192,9 +212,37 @@ class VideoDecoderWorker(QObject):
         if not detections:
             return frame
         
-        return self._annotator.annotate_frame(
+        # Initially, annotate all detections normally
+        frame = self._annotator.annotate_frame(
             frame, detections, context, copy=True
         )
+    
+        # If a highlight index is set, draw an additional rectangle on the
+        # selected detection with a distinct colour and thicker line.
+        if 0 <= self._highlight_index < len(detections):
+            det = detections[self._highlight_index]
+            self._draw_highlight(frame, det)
+
+        return frame
+    
+    @staticmethod
+    def _draw_highlight(frame, detection: Detection):
+        """
+        Draw a highlight rectangle on the selected detection.
+        
+        Uses cyan (BGR: 255, 255, 0) with a thicker line to
+        distinguish it from the standard annotation boxes.
+        """
+        import cv2
+
+        # Convert from centre format to corner format
+        x1 = int(detection.xc - detection.width / 2)
+        y1 = int(detection.yc - detection.height / 2)
+        x2 = int(detection.xc + detection.width / 2)
+        y2 = int(detection.yc + detection.height / 2)
+
+        # Cyan highlight, 3px thick (standard boxes are 1px)
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 0), 3)
 
     # --- CLEANUP ---
     @Slot()

@@ -1,21 +1,35 @@
-"""Validation tab - assembles viewer, transport and worker."""
+"""
+Validation tab - assembles viewer, transport and worker and creates the tab 
+layout.
+"""
 
 import logging
 from pathlib import Path
+import bisect
 
-from PySide6.QtCore import QThread, QTimer, Signal
-from PySide6.QtWidgets import QMessageBox, QVBoxLayout, QWidget
+from PySide6.QtCore import QThread, QTimer, Signal, Qt
+from PySide6.QtWidgets import (
+    QMessageBox,
+    QSplitter, 
+    QVBoxLayout, 
+    QWidget,
+)
 
-from seavision.gui.validation.video_viewer import FrameDisplay
-from seavision.gui.validation.video_worker import VideoDecoderWorker
-from seavision.gui.validation.transport_bar import TransportBar
 from seavision.gui.shared.session_utils import resolve_video_paths
+from seavision.gui.validation.detection_detail import DetectionDetailPanel
+from seavision.gui.validation.detection_table import(
+    DetectionTableModel,
+    DetectionTableView,
+)
 from seavision.gui.validation.seekable_source import (
     _needs_preload,
     _estimate_memory_mb,
     _available_memory_mb,
-    SeekableVideoSource
+    SeekableVideoSource,
 )
+from seavision.gui.validation.transport_bar import TransportBar
+from seavision.gui.validation.video_viewer import FrameDisplay
+from seavision.gui.validation.video_worker import VideoDecoderWorker
 from seavision.engine.visualiser import CSVDetectionLoader
 from seavision.engine.source.base import VideoMetadata
 
@@ -41,6 +55,7 @@ class ValidationTab(QWidget):
     _set_detection_source = Signal(object)
     _clear_detection_source = Signal()
     _request_frame_immediate = Signal(int)
+    _set_highlight = Signal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -48,11 +63,43 @@ class ValidationTab(QWidget):
         # --- Create widgets ---
         self._viewer = FrameDisplay()
         self._transport = TransportBar()
+        self._detection_model = DetectionTableModel()
+        self._detection_table = DetectionTableView()
+        self._detection_table.setModel(self._detection_model)
+        self._detail_panel = DetectionDetailPanel()
 
-        # --- Layout ---
+#        # --- Layout ---
+#        layout = QVBoxLayout(self)
+#        layout.setContentsMargins(0, 0, 0, 0)
+#        layout.addWidget(self._viewer, stretch=1)
+#        layout.addWidget(self._transport, stretch=0)
+
+        # --- Layout: three-zone splitter ---
+        # Outer splitter: left placeholder | centre viewer | right panel
+        self._outer_splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        # Left placeholder — becomes VideoListWidget in Phase 5
+        self._left_placeholder = QWidget()
+        self._left_placeholder.setMinimumWidth(100)
+        self._outer_splitter.addWidget(self._left_placeholder)
+
+        # Centre: video viewer
+        self._outer_splitter.addWidget(self._viewer)
+
+        # Right: detection table (top) + detail panel (bottom)
+        self._right_splitter = QSplitter(Qt.Orientation.Vertical)
+        self._right_splitter.addWidget(self._detection_table)
+        self._right_splitter.addWidget(self._detail_panel)
+        self._right_splitter.setSizes([400, 200])  # 2:1 ratio
+
+        self._outer_splitter.addWidget(self._right_splitter)
+
+        # Set initial sizes: left 150px, centre 700px, right 350px
+        self._outer_splitter.setSizes([150, 700, 350])
+
+        # Main layout: splitter on top, transport bar on bottom
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self._viewer, stretch=1)
+        layout.addWidget(self._outer_splitter, stretch=1)
         layout.addWidget(self._transport, stretch=0)
 
         # --- Worker thread ---
@@ -71,6 +118,8 @@ class ValidationTab(QWidget):
         self._csv_loader: CSVDetectionLoader | None = None
         self._video_paths: dict[str, str] = {}
         self._active_source: str | None = None
+        self._selected_detection_index: int | None = None
+        self._detection_frame_numbers: list[int] = []
 
         # --- Connect private signals to worker slots ---
         self._request_open.connect(self._worker.open_video)
@@ -85,6 +134,7 @@ class ValidationTab(QWidget):
         self._request_frame_immediate.connect(
             self._worker.request_frame_immediate
         )
+        self._set_highlight.connect(self._worker.set_highlight_index)
 
         # --- Connect worker signals to slots ---
         self._worker.frame_ready.connect(self._viewer.update_frame)
@@ -99,6 +149,17 @@ class ValidationTab(QWidget):
         self._transport.prev_frame_clicked.connect(self._on_prev_frame)
         self._transport.seek_requested.connect(self._on_seek)
         self._transport.seek_commited.connect(self._on_seek_committed)
+        self._transport.prev_detection_clicked.connect(
+            self._on_prev_detection
+        )
+        self._transport.next_detection_clicked.connect(
+            self._on_next_detection
+        )
+
+        # --- Connect detection table signals ---
+        self._detection_table.detection_selected.connect(
+            self._on_detection_selected
+        )
 
         # --- Debounce timer for seek requests ---
         self._seek_timer = QTimer()
@@ -211,6 +272,27 @@ class ValidationTab(QWidget):
         # Send the detection source
         self._set_detection_source.emit(filtered_loader)
 
+        # Populate the detection table
+        all_detections = []
+        for frame_num in filtered_loader.get_frame_numbers_with_detections():
+            all_detections.extend(
+                filtered_loader.get_detections_for_frame(frame_num)
+            )
+
+        # Read FPS from metadata
+        fps = self._metadata.fps if self._metadata else 10.0
+        self._detection_model.set_detections(all_detections, fps=fps)
+
+        # Cache the sorted frame numbers for navigation
+        self._detection_frame_numbers = (
+            self._detection_model.frame_numbers_sorted()
+        )
+
+        # Clear the detail panel and highlight
+        self._detail_panel.clear()
+        self._selected_detection_index = None
+        self._set_highlight.emit(-1)
+
         # Check for preload
         preload = self._should_preload(local_path)
 
@@ -235,12 +317,15 @@ class ValidationTab(QWidget):
         preload = self._should_preload(filepath)
         self._request_open.emit(filepath, preload)
 
-    def _on_video_opened(self, metadata) -> None:
+    def _on_video_opened(self, metadata: VideoMetadata) -> None:
         """Worker has opened a video — configure the UI."""
         self._metadata = metadata
         self._current_frame = 0
         self._is_playing = False
         self._transport.set_video_info(metadata)
+
+        # Update table with accurate frame rate
+        self._detection_model._fps = metadata.fps
 
     # --- Video preload methods ---
     def _confirm_preload(self, filepath: str, metadata: VideoMetadata) -> bool:
@@ -296,6 +381,42 @@ class ValidationTab(QWidget):
         # Read metadata to calculate memory
         metadata = SeekableVideoSource._read_metadata(filepath)
         return self._confirm_preload(filepath, metadata)
+    
+    def _on_detection_selected(
+        self, row: int, frame_number: int,
+    ) -> None:
+        """
+        Handle a detection being selected in the table.
+
+        Seeks the video to the detection's frame, updates the detail panel, and
+        requests a frame render with the selected detection highlighted.
+        """
+        detection = self._detection_model.detection_at(row)
+        if detection is None:
+            return
+        
+        self._selected_detection_index = row
+        
+        # Update the detail panel
+        fps = self._metadata.fps
+        self._detail_panel.set_detection(detection, fps=fps)
+
+        # If playing, stop before seeking to detection frame.
+        if self._is_playing:
+            self._on_play_pause()
+
+        # Request the frame with detection highlighting
+        self._seek_to_frame_with_highlight(frame_number, row)
+
+    def _seek_to_frame_with_highlight(
+            self, frame_number: int, selected_row: int) -> None:
+        """Seek to a frame and highlight a specific detection."""
+        detection = self._detection_model.detection_at(selected_row)
+        if detection is None:
+            self._set_highlight.emit(-1) # Clear highlight
+        else:
+            self._set_highlight.emit(selected_row)
+        self._request_frame.emit(frame_number)
 
     def _on_frame_received(self, image, frame_number, timestamp) -> None:
         """Worker has decoded a frame — update our bookkeeping."""
@@ -329,6 +450,65 @@ class ValidationTab(QWidget):
         """Step backward one frame."""
         prev_frame = max(self._current_frame - 1, 0)
         self._request_frame.emit(prev_frame)
+
+    def _on_next_detection(self) -> None:
+        """
+        Navigate to the next frame that has a detection.
+
+        Uses bisect_right to find the first detection frame strictly after the
+        current frame.
+        """
+        if not self._detection_frame_numbers:
+            return
+        
+        idx = bisect.bisect_right(
+            self._detection_frame_numbers, self._current_frame
+        )
+
+        if idx >= len(self._detection_frame_numbers):
+            # Already past the last detection — optionally wrap to start
+            return
+
+        target_frame = self._detection_frame_numbers[idx]
+        self._navigate_to_detection_frame(target_frame)
+
+    def _on_prev_detection(self) -> None:
+        """
+        Navigate to the previous frame that has detections.
+
+        Uses bisect_left to find the last detection frame strictly
+        before the current frame.
+        """
+        if not self._detection_frame_numbers:
+            return
+
+        idx = bisect.bisect_left(
+            self._detection_frame_numbers, self._current_frame
+        ) - 1
+
+        if idx < 0:
+            # Already before the first detection
+            return
+
+        target_frame = self._detection_frame_numbers[idx]
+        self._navigate_to_detection_frame(target_frame)
+
+    def _navigate_to_detection_frame(self, target_frame: int) -> None:
+        """
+        Navigate to a detection frame and select its first detection.
+
+        Args:
+            target_frame: Frame number to navigate to.
+        """
+        # Find the first detection on this frame in the model
+        for row in range(self._detection_model.detection_count()):
+            det = self._detection_model.detection_at(row)
+            if det is not None and det.frame_number == target_frame:
+                # Select it in the table — this triggers
+                # _on_detection_selected, which handles seeking,
+                # detail panel update, and highlighting
+                self._detection_table.select_row(row)
+                return
 
     def _on_seek(self, frame_number: int) -> None:
         """User dragged the slider - denouce rapid seeks."""
