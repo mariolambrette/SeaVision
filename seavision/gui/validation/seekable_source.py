@@ -162,19 +162,6 @@ class SeekableVideoSource:
     @property
     def metadata(self) -> VideoMetadata:
         """Cached video metadata."""
-        # Update frame_count to match actual decoded frames, which
-        # may differ from the container's reported count
-        if len(self._frames) != self._metadata.frame_count:
-            self._metadata = VideoMetadata(
-                source_file=self._metadata.source_file,
-                fps=self._metadata.fps,
-                frame_count=len(self._frames),
-                width=self._metadata.width,
-                height=self._metadata.height,
-                duration=len(self._frames) / self._metadata.fps
-                if self._metadata.fps > 0
-                else 0.0,
-            )
         return self._metadata
     
     def _make_context(self, frame_number: int) -> FrameContext:
@@ -189,7 +176,11 @@ class SeekableVideoSource:
     
     def _clamp(self, frame_number: int) -> int:
         """Clamp a frame number to the valid range."""
-        return max(0, min(frame_number, len(self._frames) - 1))
+        if self._preload:
+            max_frame = len(self._frames) - 1
+        else:
+            max_frame = self._metadata.frame_count - 1
+        return max(0, min(frame_number, max_frame))
 
     def seek(self, frame_number: int) -> None:
         """

@@ -24,7 +24,8 @@ class TransportBar(QWidget):
     play_pause_clicked = Signal()
     next_frame_clicked = Signal()
     prev_frame_clicked = Signal()
-    seek_requested = Signal(int) # Frame number
+    seek_requested = Signal(int) # Frame number, fires during drag
+    seek_commited = Signal(int) # Frame number, fires on slider release
 
     def __init__(self, parent=None):
         """
@@ -47,7 +48,6 @@ class TransportBar(QWidget):
         # --- Seek slider ---
         self._slider = QSlider(Qt.Orientation.Horizontal)
         self._slider.setRange(0, 0)
-
         
         # --- Labels ---
         self._frame_label = QLabel("Frame: - / -")
@@ -70,6 +70,9 @@ class TransportBar(QWidget):
         self._play_btn.clicked.connect(self.play_pause_clicked)
         self._next_btn.clicked.connect(self.next_frame_clicked)
         self._slider.sliderMoved.connect(self.seek_requested)
+        self._slider.sliderReleased.connect(
+            self._on_slider_released
+        )
 
 
         # Disable until a video is loaded
@@ -106,6 +109,10 @@ class TransportBar(QWidget):
     def set_playing(self, is_playing: bool) -> None:
         """Update the play/pause button text."""
         self._play_btn.setText("⏸" if is_playing else "▶")
+
+    def _on_slider_released(self) -> None:
+        """Slider was released - emit the final position."""
+        self.seek_commited.emit(self._slider.value())
 
     @staticmethod
     def _format_time(seconds: float) -> str:

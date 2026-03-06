@@ -1,6 +1,7 @@
 """Background video decoder - runs on a QThread"""
 
 import logging
+import time
 from typing import Optional
 
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
@@ -49,6 +50,9 @@ class VideoDecoderWorker(QObject):
         # Detection source for annotations (set externally by the main thread)
         self._detection_source: DetectionSource | None = None
 
+        # Flag to skip pending seek requests
+        self._skip_pending_seeks = False
+
 
     # --- PLAYBACK SLOT & METHODS ---
     @Slot(str, bool)
@@ -70,6 +74,9 @@ class VideoDecoderWorker(QObject):
     @Slot(int)
     def request_frame(self, frame_number: int) -> None:
         """Seek to a frame, decode it, and emit the result."""
+        if self._skip_pending_seeks:
+            return # return immediately to skip pending seeks.
+        
         if self._source is None:
             return
         
@@ -79,6 +86,29 @@ class VideoDecoderWorker(QObject):
         if result is None:
             return
         
+        frame, ctx = result
+        frame = self._annotate_frame(frame, ctx)
+        image = numpy_bgr_to_qimage(frame)
+        self.frame_ready.emit(image, ctx.frame_number, ctx.timestamp)
+
+    @Slot(int)
+    def request_frame_immediate(self, frame_number: int) -> None:
+        """
+        Seek to a frame unconditionally - never skipped.
+        
+        Clears the skip flag so that future preview seeks (from the next drag)
+        will be processed normally.
+        """
+        self._skip_pending_seeks = False
+        self._playing = False
+
+        if self._source is None:
+            return
+
+        result = self._source.read_at(frame_number)
+        if result is None:
+            return
+
         frame, ctx = result
         frame = self._annotate_frame(frame, ctx)
         image = numpy_bgr_to_qimage(frame)
@@ -109,7 +139,9 @@ class VideoDecoderWorker(QObject):
         """
         if not self._playing or self._source is None:
             return
-        
+
+        tick_start = time.perf_counter()
+
         result = self._source.read()
         if result is None:
             self._playing = False
@@ -121,9 +153,12 @@ class VideoDecoderWorker(QObject):
         image = numpy_bgr_to_qimage(frame)
         self.frame_ready.emit(image, ctx.frame_number, ctx.timestamp)
 
-        # Schedule the next frame
-        interval_ms = int(1000 / self._source.metadata.fps)
-        QTimer.singleShot(interval_ms, self._playback_tick)
+        # Subtract the time already spent from the target interval
+        elapsed_ms = (time.perf_counter() - tick_start) * 1000
+        target_ms = 100 / self._source.metadata.fps
+        remaining_ms = max(1, target_ms - elapsed_ms)
+
+        QTimer.singleShot(remaining_ms, self._playback_tick)
 
     # --- ANNOTATION SLOTS & METHODS ---
     @Slot(object)

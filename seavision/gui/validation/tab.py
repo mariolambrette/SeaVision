@@ -3,7 +3,7 @@
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QThread, QTimer, Signal
 from PySide6.QtWidgets import QMessageBox, QVBoxLayout, QWidget
 
 from seavision.gui.validation.video_viewer import FrameDisplay
@@ -40,6 +40,7 @@ class ValidationTab(QWidget):
     _request_close = Signal()
     _set_detection_source = Signal(object)
     _clear_detection_source = Signal()
+    _request_frame_immediate = Signal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -81,6 +82,9 @@ class ValidationTab(QWidget):
         self._clear_detection_source.connect(
             self._worker.clear_detection_source
         )
+        self._request_frame_immediate.connect(
+            self._worker.request_frame_immediate
+        )
 
         # --- Connect worker signals to slots ---
         self._worker.frame_ready.connect(self._viewer.update_frame)
@@ -94,6 +98,14 @@ class ValidationTab(QWidget):
         self._transport.next_frame_clicked.connect(self._on_next_frame)
         self._transport.prev_frame_clicked.connect(self._on_prev_frame)
         self._transport.seek_requested.connect(self._on_seek)
+        self._transport.seek_commited.connect(self._on_seek_committed)
+
+        # --- Debounce timer for seek requests ---
+        self._seek_timer = QTimer()
+        self._seek_timer.setSingleShot(True)
+        self._seek_timer.setInterval(50)  # ms
+        self._seek_timer.timeout.connect(self._do_seek)
+        self._pending_seek: int | None = None
 
     def open_session(
             self, csv_path: str, video_dir: str
@@ -319,12 +331,41 @@ class ValidationTab(QWidget):
         self._request_frame.emit(prev_frame)
 
     def _on_seek(self, frame_number: int) -> None:
-        """User dragged the slider."""
+        """User dragged the slider - denouce rapid seeks."""
         if self._is_playing:
             self._request_stop.emit()
             self._is_playing = False
             self._transport.set_playing(False)
-        self._request_frame.emit(frame_number)
+
+        self._pending_seek = frame_number
+        if not self._seek_timer.isActive():
+            self._seek_timer.start()
+
+    def _on_seek_committed(self, frame_number: int) -> None:
+        """User released the slider - jump directly to the final frame."""
+        # Cancel any pending debounced seeks
+        self._seek_timer.stop()
+        self._pending_seek = None
+
+        if self._is_playing:
+            self._request_stop.emit()
+            self._is_playing = False
+            self._transport.set_playing = False
+
+        # Set the skip flag directly on the worker — bypasses the signal
+        # queue so it takes effect before queued seeks are processed.
+        # Safe under Python's GIL for simple attribute assignment.
+        self._worker._skip_pending_seeks = True
+
+        # This goes to the end of the queue, but uses the immediate
+        # slot which ignores the skip flag and resets it.
+        self._request_frame_immediate.emit(frame_number)
+    
+    def _do_seek(self) -> None:
+        """Process the most recent seek request."""
+        if self._pending_seek is not None:
+            self._request_frame.emit(self._pending_seek)
+            self._pending_seek = None
 
     def _on_playback_finished(self) -> None:
         """Video reached the end."""
