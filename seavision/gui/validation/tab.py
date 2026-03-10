@@ -5,7 +5,6 @@ layout.
 
 import logging
 from pathlib import Path
-import bisect
 
 from PySide6.QtCore import QThread, QTimer, Signal, Qt
 from PySide6.QtWidgets import (
@@ -55,7 +54,7 @@ class ValidationTab(QWidget):
     _set_detection_source = Signal(object)
     _clear_detection_source = Signal()
     _request_frame_immediate = Signal(int)
-    _set_highlight = Signal(int)
+    _set_highlight = Signal(object) # Detection object or None
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -119,7 +118,6 @@ class ValidationTab(QWidget):
         self._video_paths: dict[str, str] = {}
         self._active_source: str | None = None
         self._selected_detection_index: int | None = None
-        self._detection_frame_numbers: list[int] = []
 
         # --- Connect private signals to worker slots ---
         self._request_open.connect(self._worker.open_video)
@@ -134,7 +132,7 @@ class ValidationTab(QWidget):
         self._request_frame_immediate.connect(
             self._worker.request_frame_immediate
         )
-        self._set_highlight.connect(self._worker.set_highlight_index)
+        self._set_highlight.connect(self._worker.set_highlight_detection)
 
         # --- Connect worker signals to slots ---
         self._worker.frame_ready.connect(self._viewer.update_frame)
@@ -279,19 +277,12 @@ class ValidationTab(QWidget):
                 filtered_loader.get_detections_for_frame(frame_num)
             )
 
-        # Read FPS from metadata
-        fps = self._metadata.fps if self._metadata else 10.0
-        self._detection_model.set_detections(all_detections, fps=fps)
-
-        # Cache the sorted frame numbers for navigation
-        self._detection_frame_numbers = (
-            self._detection_model.frame_numbers_sorted()
-        )
+        self._detection_model.set_detections(all_detections, fps=None)
 
         # Clear the detail panel and highlight
         self._detail_panel.clear()
         self._selected_detection_index = None
-        self._set_highlight.emit(-1)
+        self._set_highlight.emit(None)
 
         # Check for preload
         preload = self._should_preload(local_path)
@@ -314,6 +305,12 @@ class ValidationTab(QWidget):
         self._active_source = None
         self._clear_detection_source.emit()
 
+        # Clear the detection table and detail panel
+        self._detection_model.set_detections([])
+        self._detail_panel.clear()
+        self._selected_detection_index = None
+        self._set_highlight.emit(None)
+
         preload = self._should_preload(filepath)
         self._request_open.emit(filepath, preload)
 
@@ -325,7 +322,9 @@ class ValidationTab(QWidget):
         self._transport.set_video_info(metadata)
 
         # Update table with accurate frame rate
-        self._detection_model._fps = metadata.fps
+        if metadata.fps and metadata.fps > 0:
+            self._detection_model._fps = metadata.fps
+            self._detection_model.layoutChanged.emit() 
 
     # --- Video preload methods ---
     def _confirm_preload(self, filepath: str, metadata: VideoMetadata) -> bool:
@@ -409,13 +408,11 @@ class ValidationTab(QWidget):
         self._seek_to_frame_with_highlight(frame_number, row)
 
     def _seek_to_frame_with_highlight(
-            self, frame_number: int, selected_row: int) -> None:
+            self, frame_number: int, selected_row: int
+        ) -> None:
         """Seek to a frame and highlight a specific detection."""
         detection = self._detection_model.detection_at(selected_row)
-        if detection is None:
-            self._set_highlight.emit(-1) # Clear highlight
-        else:
-            self._set_highlight.emit(selected_row)
+        self._set_highlight.emit(detection)
         self._request_frame.emit(frame_number)
 
     def _on_frame_received(self, image, frame_number, timestamp) -> None:
@@ -453,62 +450,37 @@ class ValidationTab(QWidget):
 
     def _on_next_detection(self) -> None:
         """
-        Navigate to the next frame that has a detection.
+        Navigate to the next detection in the table
 
-        Uses bisect_right to find the first detection frame strictly after the
-        current frame.
+        Steps through detection sequentially - all detections on the 
+        current frame before moving on to the next frame.
         """
-        if not self._detection_frame_numbers:
+        if self._detection_model.detection_count() == 0:
             return
         
-        idx = bisect.bisect_right(
-            self._detection_frame_numbers, self._current_frame
-        )
-
-        if idx >= len(self._detection_frame_numbers):
-            # Already past the last detection — optionally wrap to start
+        # If nothing is seletected, start with the first detection
+        if self._selected_detection_index is None:
+            self._detection_table.select_row(0)
             return
-
-        target_frame = self._detection_frame_numbers[idx]
-        self._navigate_to_detection_frame(target_frame)
+        
+        next_row = self._selected_detection_index + 1
+        if next_row >= self._detection_model.detection_count():
+            return # Already at the last detection
+        
+        self._detection_table.select_row(next_row)
 
     def _on_prev_detection(self) -> None:
         """
-        Navigate to the previous frame that has detections.
-
-        Uses bisect_left to find the last detection frame strictly
-        before the current frame.
+        Navigate to the previous detection in the table.
         """
-        if not self._detection_frame_numbers:
+        if self._detection_model.detection_count() == 0:
             return
-
-        idx = bisect.bisect_left(
-            self._detection_frame_numbers, self._current_frame
-        ) - 1
-
-        if idx < 0:
-            # Already before the first detection
+        if self._selected_detection_index is None:
             return
-
-        target_frame = self._detection_frame_numbers[idx]
-        self._navigate_to_detection_frame(target_frame)
-
-    def _navigate_to_detection_frame(self, target_frame: int) -> None:
-        """
-        Navigate to a detection frame and select its first detection.
-
-        Args:
-            target_frame: Frame number to navigate to.
-        """
-        # Find the first detection on this frame in the model
-        for row in range(self._detection_model.detection_count()):
-            det = self._detection_model.detection_at(row)
-            if det is not None and det.frame_number == target_frame:
-                # Select it in the table — this triggers
-                # _on_detection_selected, which handles seeking,
-                # detail panel update, and highlighting
-                self._detection_table.select_row(row)
-                return
+        prev_row = self._selected_detection_index - 1
+        if prev_row < 0:
+            return  # Already at the first detection
+        self._detection_table.select_row(prev_row)
 
     def _on_seek(self, frame_number: int) -> None:
         """User dragged the slider - denouce rapid seeks."""
@@ -530,7 +502,7 @@ class ValidationTab(QWidget):
         if self._is_playing:
             self._request_stop.emit()
             self._is_playing = False
-            self._transport.set_playing = False
+            self._transport.set_playing(False)
 
         # Set the skip flag directly on the worker — bypasses the signal
         # queue so it takes effect before queued seeks are processed.

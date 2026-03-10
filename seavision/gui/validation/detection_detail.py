@@ -51,7 +51,9 @@ class DetectionDetailPanel(QWidget):
         self._area_value = QLabel()
         layout.addRow("Area:", self._area_value)
 
-    def set_detection(self, detection: Detection, fps: float = 10.0) -> None:
+    def set_detection(
+        self, detection: Detection, fps: float | None = None
+    ) -> None:
         """
         Update all fields to show the given detection's properties.
 
@@ -59,12 +61,15 @@ class DetectionDetailPanel(QWidget):
             detection: A detection object from the engine.
             fps: Video frame rate for timestamp calculation.
         """
-        timestamp = detection.frame_number / fps if fps > 0 else 0.0
-        mins = int(timestamp // 60)
-        secs = timestamp % 60
-
         self._frame_value.setText(str(detection.frame_number))
-        self._time_value.setText(f"{mins}:{secs:04.1f}")
+        
+        if fps is not None and fps > 0:
+            timestamp = detection.frame_number / fps
+            mins = int(timestamp // 60)
+            secs = timestamp % 60
+            self._time_value.setText(f"{mins}:{secs:04.1f}")
+        else:
+            self._time_value.setText("—")
 
         if detection.confidence is not None:
             self._confidence_value.setText(f"{detection.confidence:.3f}")

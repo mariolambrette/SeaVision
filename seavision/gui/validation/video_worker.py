@@ -55,9 +55,9 @@ class VideoDecoderWorker(QObject):
         # Flag to skip pending seek requests
         self._skip_pending_seeks = False
 
-        # Selected detection index for highlighting (set externally by the
+        # Selected detection for highlighting (set externally by the
         # main thread)
-        self._highlight_index: int = -1 #-1 = no highlight
+        self._highlight_detection: Detection | None = None
 
 
     # --- PLAYBACK SLOT & METHODS ---
@@ -161,8 +161,8 @@ class VideoDecoderWorker(QObject):
 
         # Subtract the time already spent from the target interval
         elapsed_ms = (time.perf_counter() - tick_start) * 1000
-        target_ms = 100 / self._source.metadata.fps
-        remaining_ms = max(1, target_ms - elapsed_ms)
+        target_ms = 1000 / self._source.metadata.fps
+        remaining_ms = max(1, int(target_ms - elapsed_ms))
 
         QTimer.singleShot(remaining_ms, self._playback_tick)
 
@@ -182,23 +182,23 @@ class VideoDecoderWorker(QObject):
             type(source).__name__ if source else "None"
         )
 
-    @Slot(int)
-    def set_highlight_index(self, index: int) -> None:
+    @Slot(object)
+    def set_highlight_detection(self, detection: Detection | None) -> None:
         """
         Set which detection to highlight with a distinct colour.
 
         Args:
-            index: Index into the current frame's detection list, or -1 to clear
-                the highlight.
+            detection: The detection object to highlight, or None to clear the 
+                highlight.
         """
-        self._highlight_index = index
+        self._highlight_detection = detection
 
     def _annotate_frame(self, frame, context: FrameContext):
         """
         Annotate a frame with detection overlays and optional highlight.
 
         The standard FrameAnnotator draws all detections. If a highlight
-        index is set, we draw an additional rectangle on the selected
+        detection is set, we draw an additional rectangle on the selected
         detection with a distinct colour and thicker line.
         """
 
@@ -217,11 +217,17 @@ class VideoDecoderWorker(QObject):
             frame, detections, context, copy=True
         )
     
-        # If a highlight index is set, draw an additional rectangle on the
-        # selected detection with a distinct colour and thicker line.
-        if 0 <= self._highlight_index < len(detections):
-            det = detections[self._highlight_index]
-            self._draw_highlight(frame, det)
+        # Highlight the selected detection if it's on this frame
+        if self._highlight_detection is not None:
+            hl = self._highlight_detection
+            if hl.frame_number == context.frame_number:
+                # Match by coordinates
+                for det in detections:
+                    if (det.xc == hl.xc and det.yc == hl.yc
+                            and det.width == hl.width
+                            and det.height == hl.height):
+                        self._draw_highlight(frame, det)
+                        break
 
         return frame
     

@@ -5,6 +5,7 @@ from PySide6.QtCore import (
     QModelIndex,
     Qt,
     Signal,
+    QSortFilterProxyModel,
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -36,7 +37,7 @@ class DetectionTableModel(QAbstractTableModel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._detections: list = []
-        self._fps: float = 10.0
+        self._fps: float | None = None
 
     # --- Compulsory interface methods ---
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
@@ -85,10 +86,12 @@ class DetectionTableModel(QAbstractTableModel):
             return str(detection.frame_number)
         
         if col == 1:  # Time
-            timestamp = detection.frame_number / self._fps if self._fps > 0 else 0.0
-            mins = int(timestamp // 60)
-            secs = timestamp % 60
-            return f"{mins}:{secs:04.1f}"
+            if self._fps is not None and self._fps > 0:
+                timestamp = detection.frame_number / self._fps if self._fps > 0 else 0.0
+                mins = int(timestamp // 60)
+                secs = timestamp % 60
+                return f"{mins}:{secs:04.1f}"
+            return "—"
         
         if col == 2: # Confidence
             if detection.confidence is not None:
@@ -125,7 +128,7 @@ class DetectionTableModel(QAbstractTableModel):
     def set_detections(
             self,
             detections: list[Detection],
-            fps: float = 10.0,
+            fps: float | None = None,
     ) -> None:
         """
         Replace the detection list and refresh all connected views.
@@ -174,6 +177,7 @@ class DetectionTableView(QTableView):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._proxy: QSortFilterProxyModel | None = None
         self._setup_appearance()
 
     def _setup_appearance(self) -> None:
@@ -206,7 +210,10 @@ class DetectionTableView(QTableView):
 
         Also applies the colum width hints from the COLUMNS definition.
         """
-        super().setModel(model)
+        self._proxy = QSortFilterProxyModel(self)
+        self._proxy.setSourceModel(model)
+        
+        super().setModel(self._proxy)
 
         # Apply column widths
         for i, (_, _, width) in enumerate(COLUMNS):

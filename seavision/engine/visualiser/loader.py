@@ -174,10 +174,12 @@ class CSVDetectionLoader(DetectionSource):
         "xc",
         "yc",
         "width",
-        "height"
+        "height",
     }
     OPTIONAL_COLUMNS = {
-        "confidence"
+        "confidence",
+        "label",
+        "track_id",
     }
 
 
@@ -307,7 +309,19 @@ class CSVDetectionLoader(DetectionSource):
             conf_str = row.get("confidence", "").strip()
             if conf_str:
                 confidence = float(conf_str)
-        
+
+        # Parse label (may be empty string or missing)
+        label = None
+        label_str = row.get("label", "").strip()
+        if label_str:
+            label = label_str
+
+        # Parse the track ID (may be empty string or missing)
+        track_id = None
+        track_id_str = row.get("track_id", "").strip()
+        if track_id_str:
+            track_id = track_id_str
+
         return Detection(
             source_file=row["source_file"].strip(),
             timestamp=float(row["timestamp"].strip()),
@@ -317,6 +331,8 @@ class CSVDetectionLoader(DetectionSource):
             width=float(row["width"].strip()),
             height=float(row["height"].strip()),
             confidence=confidence,
+            label=label,
+            track_id=track_id
         )
 
     
