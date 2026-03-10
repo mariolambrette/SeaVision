@@ -214,7 +214,7 @@ class SeekableVideoSource:
         if self._preload:
             if self._frame_counter >= len(self._frames):
                 return None
-            frame = self._frames[self._frame_counter]
+            frame = self._frames[self._frame_counter].copy()
         else:
             if self._cap is None:
                 return None
@@ -234,7 +234,7 @@ class SeekableVideoSource:
             if not self._frames:
                 return None
             clamped = self._clamp(frame_number)
-            frame = self._frames[clamped]
+            frame = self._frames[clamped].copy()
         else:
             if self._cap is None:
                 return None
@@ -244,7 +244,7 @@ class SeekableVideoSource:
             if not ret:
                 return None
 
-        ctx = self._make_context(self._frame_counter)
+        ctx = self._make_context(clamped)
         self._frame_counter = clamped + 1
         return frame, ctx
 
