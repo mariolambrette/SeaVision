@@ -6,6 +6,8 @@ Will eventually be extended to allow editing of bounding box position.
 from PySide6.QtWidgets import QFormLayout, QLabel, QWidget
 
 from seavision.engine.detectors.base import Detection
+from seavision.gui.validation.validation_model import ValidatedDetection
+
 
 class DetectionDetailPanel(QWidget):
     """
@@ -52,15 +54,17 @@ class DetectionDetailPanel(QWidget):
         layout.addRow("Area:", self._area_value)
 
     def set_detection(
-        self, detection: Detection, fps: float | None = None
+        self, vd: ValidatedDetection, fps: float | None = None
     ) -> None:
         """
         Update all fields to show the given detection's properties.
 
         Args:
-            detection: A detection object from the engine.
+            vd: A ValidatedDetection object.
             fps: Video frame rate for timestamp calculation.
         """
+        detection = vd.detection
+        
         self._frame_value.setText(str(detection.frame_number))
         
         if fps is not None and fps > 0:
