@@ -46,8 +46,11 @@ seavision/gui/validation/__init__.py
 seavision/gui/validation/detection_detail.py
 seavision/gui/validation/detection_table.py
 seavision/gui/validation/seekable_source.py
+seavision/gui/validation/session.py
 seavision/gui/validation/tab.py
 seavision/gui/validation/transport_bar.py
 seavision/gui/validation/validation_model.py
+seavision/gui/validation/video_cache.py
+seavision/gui/validation/video_list.py
 seavision/gui/validation/video_viewer.py
 seavision/gui/validation/video_worker.py

@@ -6,8 +6,9 @@ layout.
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QThread, QTimer, Signal, Qt
+from PySide6.QtCore import QThread, QTimer, QObject, Qt, Signal
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QHBoxLayout,
     QInputDialog,
@@ -42,6 +43,8 @@ from seavision.gui.validation.validation_model import (
     ValidationStatus,
     ValidatedDetection,
 )
+from seavision.gui.validation.video_cache import S3VideoCache
+from seavision.gui.validation.video_list import VideoListWidget
 from seavision.gui.validation.video_viewer import FrameDisplay
 from seavision.gui.validation.video_worker import VideoDecoderWorker
 from seavision.engine.visualiser import (
@@ -63,6 +66,73 @@ _STATUS_FILTER_MAP = {
 }
 
 
+class _S3DownloadWorker(QObject):
+    """
+    Background worker for downloading S3 videos.
+
+    Reports progress per-file rather than per-byte — this avoids
+    reliability issues with boto3's Callback parameter across
+    versions and transfer strategies.
+    """
+
+    # Emitted after each file: (completed_count, total_count)
+    progress = Signal(int, int)
+
+    # Emitted after each successful file: (s3_uri, local_path)
+    file_complete = Signal(str, str)
+
+    # Emitted when all downloads are done: (success_count, fail_count)
+    finished = Signal(int, int)
+
+    # Emitted on each failure: (s3_uri, error_message)
+    error = Signal(str, str)
+
+    def __init__(self, cache, parent=None):
+        super().__init__(parent)
+        self._cache = cache
+        self._cancelled = False
+
+    def cancel(self):
+        """Request cancellation of remaining downloads."""
+        self._cancelled = True
+
+    def download_batch(
+        self,
+        s3_uris: list[str],
+        profile_name: str | None = None,
+    ) -> None:
+        """
+        Download a list of S3 URIs to the local cache.
+
+        Emits file_complete after each successful download, error
+        after each failure, progress after each attempt (success or
+        failure), and finished when all are done.
+        """
+        total = len(s3_uris)
+        success = 0
+        failed = 0
+
+        for i, uri in enumerate(s3_uris):
+            if self._cancelled:
+                break
+
+            try:
+                local_path = self._cache.get_or_download(
+                    uri, profile_name=profile_name,
+                )
+                self.file_complete.emit(uri, str(local_path))
+                success += 1
+
+            except Exception as e:
+                self.error.emit(uri, str(e))
+                failed += 1
+
+            # Report progress after each file (success or failure)
+            self.progress.emit(i + 1, total)
+
+        self.finished.emit(success, failed)
+
+                
 class ValidationTab(QWidget):
     """
     Main validation interface - video viewer with transport controls.
@@ -182,12 +252,11 @@ class ValidationTab(QWidget):
         # Outer splitter: left placeholder | centre viewer | right panel
         self._outer_splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        # Left placeholder — becomes VideoListWidget in Phase 5
-        self._left_placeholder = QWidget()
-        self._left_placeholder.setMinimumWidth(100)
-        self._outer_splitter.addWidget(self._left_placeholder)
+        # --- Video list widget ---
+        self._video_list = VideoListWidget()
+        self._outer_splitter.addWidget(self._video_list)
 
-        # Centre: video viewer
+        # --- Video Viewer ---
         self._outer_splitter.addWidget(self._viewer)
 
         # --- Table + filter controls ---
@@ -269,6 +338,11 @@ class ValidationTab(QWidget):
         self._active_source_file: str | None = None
         self._validation_model: ValidationModel | None = None
         self._selected_detection: ValidatedDetection | None = None
+        self._csv_path : str | None = None
+        self._video_dir: str | None = None
+        self._session_save_path: Path | None = None
+        self._has_unsaved_changes: bool = False
+        self._aws_profile: str | None = None
 
         # --- Connect private signals to worker slots ---
         self._request_open.connect(self._worker.open_video)
@@ -320,6 +394,9 @@ class ValidationTab(QWidget):
         self._viewer.frame_clicked.connect(
             self._on_frame_clicked_for_add
         )
+
+        # --- Conect video list signals ---
+        self._video_list.video_selected.connect(self._on_video_selected)
 
         # --- Debounce timer for seek requests ---
         self._seek_timer = QTimer()
@@ -399,49 +476,25 @@ class ValidationTab(QWidget):
                 f"Failed to load detection CSV:\n\n{e}",
             )
             return
-        
+
         # --- Resolve video files ---
         resolved, s3_sources = resolve_video_paths(
             loader.sources_in_file,
             video_dir
         )
 
-        # --- Report S3 sources ---
-        if s3_sources:
-            QMessageBox.warning(
-                self,
-                "S3 Videos Not Supported",
-                f"This CSV references {len(s3_sources)} S3 video(s).\n\n"
-                f"S3 download is not yet implemented. Please download "
-                f"the videos manually to a local directory and try again.\n\n"
-                f"S3 sources:\n"
-                + "\n".join(f"  • {s}" for s in s3_sources[:5])
-                + ("\n  ..." if len(s3_sources) > 5 else ""),
-            )
-
-        # --- Check we found at least one video ---
-        if not resolved:
-            expected = [Path(s).name for s in loader.sources_in_file
-                        if not s.startswith("s3://")]
-            QMessageBox.warning(
-                self,
-                "No Videos Found",
-                f"No matching video files found in:\n"
-                f"  {video_dir}\n\n"
-                f"Expected filenames:\n"
-                + "\n".join(f"  • {name}" for name in expected[:10])
-                + ("\n  ..." if len(expected) > 10 else ""),
-            )
-            return
-        
         # --- Store session state ---
         self._csv_loader = loader
         self._video_paths = resolved
+        self._csv_path = csv_path
+        self._video_dir = video_dir
+        self._session_save_path = None
+        self._has_unsaved_changes = False
 
         # --- Create validation model ---
         self._validation_model = ValidationModel(loader, parent=self)
 
-        # --- Populate the class filter from validation model's labels ---
+        # --- Populate the class filter ---
         self._populate_class_filter()
 
         # --- Wire validation model signals ---
@@ -458,11 +511,23 @@ class ValidationTab(QWidget):
             self._on_detection_removed
         )
 
-        # --- Open the first video ---
-        first_source = next(
-            s for s in loader.sources_in_file if s in resolved
-        )
-        self._open_video_for_source(first_source)
+        # --- Handle S3 downloads if needed ---
+        if s3_sources:
+            self._pending_loader = loader
+            self._pending_csv_path = csv_path
+            self._download_s3_videos(
+                s3_sources,
+                on_complete=self._on_s3_downloads_complete,
+            )
+
+            # If there are also local videos, finish setup now
+            # with what we have — S3 videos get added when ready
+            if resolved:
+                self._finish_session_setup(csv_path, loader)
+            return
+
+        # --- No S3 sources — finish setup immediately ---
+        self._finish_session_setup(csv_path, loader)
 
         logger.info(
             "Session opened: %s — %d sources, %d resolved",
@@ -470,6 +535,78 @@ class ValidationTab(QWidget):
             len(loader.sources_in_file),
             len(resolved),
         )
+
+    def _finish_session_setup(self, csv_path: str, loader) -> None:
+        """
+        Complete session setup after all video paths are resolved.
+
+        Called directly for local-only sessions, or after S3 downloads
+        complete for S3 sessions. The ValidationModel and its signal
+        connections are already set up by open_session.
+        """
+        resolved = self._video_paths
+
+        # --- Check we found at least one video ---
+        if not resolved:
+            local_expected = [
+                Path(s).name for s in loader.sources_in_file
+                if not s.startswith("s3://")
+            ]
+            s3_expected = [
+                s for s in loader.sources_in_file
+                if s.startswith("s3://")
+            ]
+
+            message = "No video files could be resolved.\n\n"
+            if local_expected:
+                message += (
+                    "Expected local files:\n"
+                    + "\n".join(f"  • {n}" for n in local_expected[:10])
+                    + ("\n  ..." if len(local_expected) > 10 else "")
+                    + "\n\n"
+                )
+            if s3_expected:
+                message += (
+                    f"{len(s3_expected)} S3 video(s) failed to download."
+                )
+
+            QMessageBox.warning(self, "No Videos Found", message)
+            return
+
+        # --- Populate video list sidebar ---
+        video_info = []
+        for source_file in self._validation_model.get_all_source_files():
+            progress = self._validation_model.get_progress(source_file)
+            video_info.append({
+                "source_file": source_file,
+                "total": progress["total"],
+                "reviewed": progress["reviewed"],
+                "available": source_file in self._video_paths,
+            })
+        self._video_list.set_videos(video_info)
+
+        # --- Open the first available video ---
+        first_source = next(
+            (s for s in loader.sources_in_file if s in resolved),
+            None,
+        )
+        if first_source is not None:
+            self._open_video_for_source(first_source)
+
+        logger.info(
+            "Session setup complete: %d videos available",
+            len(resolved),
+        )
+
+    def _on_s3_downloads_complete(self) -> None:
+        """Called when background S3 downloads finish."""
+        loader = self._pending_loader
+        csv_path = self._pending_csv_path
+        self._pending_loader = None
+        self._pending_csv_path = None
+
+        # Finish setup — video list, open first video
+        self._finish_session_setup(csv_path, loader)
 
     def _open_video_for_source(self, source_name: str) -> None:
         """
@@ -523,6 +660,22 @@ class ValidationTab(QWidget):
             len(filtered_loader.get_frame_numbers_with_detections()),
         )
 
+    def _on_video_selected(self, source_file: str) -> None:
+        """
+        Switch to a different video in the session.
+
+        Called when the user clicks a video in the sidebar. Delegates to
+        _open_video_for_source which handles the video-switching logic.
+        """
+        if source_file == self._active_source_file:
+            return # Already viewing this video
+        
+        if source_file not in self._video_paths:
+            self._show_status(f"Video not available: {source_file}")
+            return
+
+        self._open_video_for_source(source_file)
+
     def _refresh_worker_detection_source(self) -> None:
         """
         Rebuild the worker's detection source from the ValidationModel.
@@ -565,6 +718,13 @@ class ValidationTab(QWidget):
         self._selected_detection = None
         self._set_highlight.emit(None)
 
+        # Clear session saving state
+        self._csv_path = None
+        self._video_dir = None
+        self._session_save_path = None
+        self._has_unsaved_changes = False
+        self._video_list.clear()
+
         preload = self._should_preload(filepath)
         self._request_open.emit(filepath, preload)
 
@@ -578,7 +738,199 @@ class ValidationTab(QWidget):
         # Update table with accurate frame rate
         if metadata.fps and metadata.fps > 0:
             self._detection_model._fps = metadata.fps
-            self._detection_model.layoutChanged.emit() 
+            self._detection_model.layoutChanged.emit()
+
+    def _download_s3_videos(
+            self, 
+            s3_uris: list[str],
+            on_complete: callable = None,
+        ) -> None:
+        """Download S3 videos to local cache with progress dialog."""
+        cache = S3VideoCache()
+
+        # Ask the user which AWS profile to use
+        profile_name = self._ask_aws_profile()
+        if profile_name is None:
+            return
+        self._aws_profile = profile_name
+        
+        # Show busy cursor during size calcualtion
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            total_bytes, need_download = cache.calculate_download_size(
+                s3_uris, profile_name=self._aws_profile
+            )
+        except RuntimeError as e:
+            QMessageBox.warning(
+                self, "S3 Access Error",
+                f"Cannot access S3 videos:\n\n{e}",
+            )
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+        
+        if not need_download:
+            # All already cached
+            for uri in s3_uris:
+                local_path = cache.cache_dir / cache._cache_key(uri)
+                self._video_paths[uri] = str(local_path)
+            return
+        
+        size_mb = total_bytes / (1024 * 1024)
+        reply = QMessageBox.question(
+            self,
+            "Download S3 Videos",
+            f"This session requires downloading {len(need_download)} "
+            f"video(s) (~{size_mb:.1f} MB) from S3.\n\n"
+            f"Cache location: {cache.cache_dir}\n\n"
+            f"Continue?",
+            QMessageBox.StandardButton.Yes
+            | QMessageBox.StandardButton.No,
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        # Add already cached URIs
+        for uri in s3_uris:
+            if uri not in need_download and cache.is_cached(uri):
+                local_path = cache.cache_dir / cache._cache_key(uri)
+                self._video_paths[uri] = str(local_path)
+        
+        # Dowload remaining in background
+        from PySide6.QtWidgets import QProgressDialog
+        
+        total_files = len(need_download)
+        progress_dialog = QProgressDialog(
+            f"Downloading video 0/{total_files}...",
+            "Cancel", 0, total_files, self,
+        )
+        progress_dialog.setWindowTitle("S3 Download")
+        progress_dialog.setMinimumDuration(0)
+
+        self._s3_thread = QThread()
+        self._s3_worker = _S3DownloadWorker(cache)
+        self._s3_worker.moveToThread(self._s3_thread)
+
+        def _update_download_progress(completed, total):
+            progress_dialog.setValue(completed)
+            progress_dialog.setLabelText(
+                f"Downloading video {completed}/{total}..."
+            )
+
+        self._s3_worker.progress.connect(_update_download_progress)
+        self._s3_worker.file_complete.connect(
+            lambda uri, path: self._video_paths.update({uri: path})
+        )
+        self._s3_worker.error.connect(
+            lambda uri, msg: logger.error(
+                "S3 download failed: %s — %s", uri, msg
+            )
+        )
+
+        def on_finished(success, failed):
+            progress_dialog.close()
+            self._s3_thread.quit()
+            if failed > 0:
+                QMessageBox.warning(
+                    self, "Download Incomplete",
+                    f"{failed} video(s) failed to download.\n"
+                    f"They will be greyed out in the video list.",
+                )
+            if on_complete is not None:
+                on_complete()
+
+        self._s3_worker.finished.connect(on_finished)
+        progress_dialog.canceled.connect(self._s3_worker.cancel)
+
+        self._s3_thread.started.connect(
+            lambda: self._s3_worker.download_batch(
+                need_download, profile_name=profile_name
+            )
+        )
+        self._s3_thread.start()
+
+    def _ask_aws_profile(self) -> str | None:
+        """
+        Ask the user which AWS profile to use for S3 access.
+
+        Discovers profiles from ~/.aws/config and presents them in a dropdown.
+        Returns the selected profile name, or None if cancelled.
+        """
+        # Discover configured profiles
+        profiles = self._get_aws_profiles()
+
+        if not profiles:
+            QMessageBox.warning(
+                self,
+                "No AWS Profiles Found",
+                "No AWS profiles are configured on this machine.\n\n"
+                "To set up a profile, run:\n"
+                "  aws configure sso\n\n"
+                "See the AWS setup documentation for details.",
+            )
+            return None
+        
+        # Let the user pick which profile to use
+        # TODO: Add an 'add profile' button which lets the users interactively
+        #       set up an AWS profile.
+        profile, ok = QInputDialog.getItem(
+            self,
+            "AWS Profile",
+            "Select the AWS profile to use for S3 access:",
+            profiles,
+            current=0,
+            editable=False,
+        )
+
+        if not ok:
+            return None
+        return profile
+    
+    @staticmethod
+    def _get_aws_profiles() -> list[str]:
+        """
+        Read availble AWS profile names from ~/.aws/config.
+
+        Returns a list of profile names. The default profile (if it exists) is 
+        listed first.
+        """
+        # TODO: It might be useful to have functionality here for the user to
+        #       adjust the search path depending on their machine's setup.
+        config_path = Path.home() / ".aws" / "config"
+        if not config_path.exists():
+            return []
+
+        import configparser
+
+        config = configparser.ConfigParser()
+        config.read(str(config_path))
+
+        profiles = []
+        for section in config.sections():
+            # AWS config sections are named [profile foo] or [default]
+            if section == "default":
+                profiles.insert(0, "default")
+            elif section.startswith("profile "):
+                profiles.append(section[len("profile "):])
+
+        return profiles
+
+    def _refresh_video_list_availability(self) -> None:
+        """Re-populate the video list with updated availability."""
+        if self._validation_model is None:
+            return
+
+        video_info = []
+        for source_file in self._validation_model.get_all_source_files():
+            progress = self._validation_model.get_progress(source_file)
+            video_info.append({
+                "source_file": source_file,
+                "total": progress["total"],
+                "reviewed": progress["reviewed"],
+                "available": source_file in self._video_paths,
+            })
+        self._video_list.set_videos(video_info)
 
     # --- Video preload methods ---
     def _confirm_preload(self, filepath: str, metadata: VideoMetadata) -> bool:
@@ -819,6 +1171,8 @@ class ValidationTab(QWidget):
         Finds the row in the table model and emits dataChanged so the view
         repaints that row with updated status and colours.
         """
+        self._has_unsaved_changes = True
+        
         # Find which row this detection is in the source model
         for row, vd in enumerate(self._detection_model._detections):
             if vd.id == detection_id:
@@ -836,6 +1190,11 @@ class ValidationTab(QWidget):
         """Update the status bar with progress."""
         if self._active_source_file is None:
             return
+        
+        # Update the video list sidebar
+        self._video_list.update_progress(
+            self._active_source_file, progress
+        )
         
         filename = Path(self._active_source_file).name
         total = progress["total"]
@@ -858,6 +1217,8 @@ class ValidationTab(QWidget):
 
     def _on_detection_added(self, vd: ValidatedDetection) -> None:
         """Handle a manual detection being added."""
+        self._has_unsaved_changes = True
+        
         if vd.detection.source_file == self._active_source_file:
             self._detection_model.append_detection(vd)
             self._select_validated_detection(vd)
@@ -866,6 +1227,8 @@ class ValidationTab(QWidget):
 
     def _on_detection_removed(self, detection_id: int) -> None:
         """Handle a manual detection being removed (implemented in Step 7)."""
+        self._has_unsaved_changes = True
+        
         self._detection_model.remove_detection_by_id(detection_id)
         self._selected_detection = None
         self._confirm_btn.setEnabled(False)
@@ -1136,6 +1499,12 @@ class ValidationTab(QWidget):
         Must be called before the application exits, otherwise the background
         thread may hang or print warnings.
         """
+        # Clean up S3 download thread if running
+        if hasattr(self, '_s3_thread') and self._s3_thread.isRunning():
+            self._s3_worker.cancel()
+            self._s3_thread.quit()
+            self._s3_thread.wait()
+
         self._request_stop.emit()
         self._clear_detection_source.emit()
         self._request_close.emit()
