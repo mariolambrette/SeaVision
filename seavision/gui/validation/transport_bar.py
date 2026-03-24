@@ -2,6 +2,7 @@
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QComboBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -29,6 +30,8 @@ class TransportBar(QWidget):
 
     prev_detection_clicked = Signal()
     next_detection_clicked = Signal()
+
+    speed_changed = Signal(float)  # Playback speed multiplier
 
     def __init__(self, parent=None):
         """
@@ -69,7 +72,18 @@ class TransportBar(QWidget):
         self._frame_label.setFixedWidth(140)
         self._time_label.setFixedWidth(100)
 
-        
+        # --- Speed selector ---
+        self._speed_combo = QComboBox()
+        self._speed_combo.addItems(
+            ["0.25x", "0.5x", "1x", "2x", "5x"]
+        )
+        self._speed_combo.setCurrentIndex(2)  # Default 1x
+        self._speed_combo.setFixedWidth(65)
+        self._speed_combo.setToolTip("Playback speed")
+        self._speed_combo.currentTextChanged.connect(
+            self._on_speed_changed
+        )
+
         # --- Assemble ---
         layout.addWidget(self._prev_det_btn)
         layout.addWidget(self._prev_btn)
@@ -79,7 +93,7 @@ class TransportBar(QWidget):
         layout.addWidget(self._slider)
         layout.addWidget(self._frame_label)
         layout.addWidget(self._time_label)
-
+        layout.addWidget(self._speed_combo)
         
         # --- Internal wiring ---
         self._prev_det_btn.clicked.connect(self.prev_detection_clicked)
@@ -130,6 +144,19 @@ class TransportBar(QWidget):
     def _on_slider_released(self) -> None:
         """Slider was released - emit the final position."""
         self.seek_commited.emit(self._slider.value())
+
+    def _on_speed_changed(self, text: str) -> None:
+        """Parse the speed text and emit the multiplier."""
+        try:
+            multiplier = float(text.rstrip("x"))
+            self.speed_changed.emit(multiplier)
+        except ValueError:
+            pass
+
+    def set_detection_nav_enabled(self, enabled: bool) -> None:
+        """Enable or disable the detection navigation buttons."""
+        self._prev_det_btn.setEnabled(enabled)
+        self._next_det_btn.setEnabled(enabled)
 
     @staticmethod
     def _format_time(seconds: float) -> str:

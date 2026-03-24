@@ -1,15 +1,20 @@
 """Main application window."""
 
+from os import path
 from pathlib import Path
 
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtCore import QSettings
+from PySide6.QtGui import QAction, QKeySequence, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import(
+    QApplication,
+    QDialog,
     QFileDialog,
     QMainWindow,
     QMessageBox,
-    QTabWidget,
+    QTabWidget
 )
 
+from seavision.gui.validation.session import SessionManager
 from seavision.gui.validation.tab import ValidationTab
 
 
@@ -40,6 +45,11 @@ class MainWindow(QMainWindow):
         # --- Status bar ---
         self.statusBar().showMessage("Ready")
 
+        self._restore_settings()
+
+        # --- Drag & drop ---
+        self.setAcceptDrops(True)
+
     def _build_menus(self):
         """Create the File menu."""
 
@@ -59,6 +69,19 @@ class MainWindow(QMainWindow):
         open_session.setShortcut(QKeySequence("Ctrl+N"))
         open_session.triggered.connect(self._on_open_session)
         file_menu.addAction(open_session)
+
+        file_menu.addSeparator()
+
+        # S3 actions
+        open_s3_video = QAction("Open Video from S&3...", self)
+        open_s3_video.triggered.connect(self._on_open_s3_video)
+        file_menu.addAction(open_s3_video)
+
+        open_s3_session = QAction("New Session from S3...", self)
+        open_s3_session.triggered.connect(self._on_open_s3_session)
+        file_menu.addAction(open_s3_session)
+
+        file_menu.addSeparator()
 
         # Save session as
         save_session_as = QAction("Save Session &As...", self)
@@ -80,6 +103,10 @@ class MainWindow(QMainWindow):
         load_session.triggered.connect(self._on_load_session)
         file_menu.addAction(load_session)
 
+        # Recent sessions
+        self._recent_menu = file_menu.addMenu("&Recent Sessions")
+        self._rebuild_recent_menu()
+
         # Export reviewed detections
         export_action = QAction("&Export Validated Detections...", self)
         export_action.setShortcut(QKeySequence("Ctrl+E"))
@@ -98,10 +125,40 @@ class MainWindow(QMainWindow):
         # --- Tools menu ---
         tools_menu = self.menuBar().addMenu("&Tools")
 
+        set_cache_loc = QAction("Set Video Cache &Location...", self)
+        set_cache_loc.triggered.connect(
+            self._on_set_cache_location
+        )
+        tools_menu.addAction(set_cache_loc)
+
         clear_cache = QAction("Clear Video &Cache...", self)
         clear_cache.triggered.connect(self._on_clear_cache)
         tools_menu.addAction(clear_cache)
 
+        # --- View menu ---
+        view_menu = self.menuBar().addMenu("&View")
+
+        self._toggle_overlays = QAction("Show &Detections", self)
+        self._toggle_overlays.setCheckable(True)
+        self._toggle_overlays.setChecked(True)
+        self._toggle_overlays.setShortcut(QKeySequence("Ctrl+D"))
+        self._toggle_overlays.toggled.connect(
+            self._validation_tab.set_overlays_visible
+        )
+        view_menu.addAction(self._toggle_overlays)
+
+        self._toggle_rejected = QAction(
+            "Show &Rejected Detections", self
+        )
+        self._toggle_rejected.setCheckable(True)
+        self._toggle_rejected.setChecked(False)
+        self._toggle_rejected.toggled.connect(
+            self._validation_tab.set_rejected_visible
+        )
+        view_menu.addAction(self._toggle_rejected)
+
+    
+    # --- OPEN VIDEO/SESSION HANDLERS ---
     def _on_open_video(self) -> None:
         """Show file dialog and open th selected video."""
         filepath, _ = QFileDialog.getOpenFileName(
@@ -170,6 +227,130 @@ class MainWindow(QMainWindow):
         # Step 5: Update the status bar with session summary
         self._update_session_status()
 
+        # Step 6: Update the window title
+        self.update_title()
+
+    def _on_open_s3_video(self) -> None:
+        """Open a single video file from S3 (no detections)."""
+        from seavision.gui.validation.s3_browser import S3BrowserMode
+
+        dialog = self._open_s3_browser(S3BrowserMode.VIDEO)
+        if dialog is None:
+            return
+        
+        video_uri = dialog.selected_video_uri
+        profile = dialog.selected_profile
+        if not video_uri:
+            return
+        
+        self._validation_tab._aws_profile = profile
+
+        local_path = self._s3_download_to_cache(video_uri, profile)
+        if local_path is None:
+            return
+        
+        self._validation_tab.open_video(local_path)
+        self.statusBar().showMessage(f"Opened S3 video: {video_uri}")
+
+    def _on_open_s3_session(self) -> None:
+        """Open a detection session from S3 (CSV + video directory)."""
+        from seavision.gui.validation.s3_browser import S3BrowserMode
+
+        dialog = self._open_s3_browser(S3BrowserMode.SESSION)
+        if dialog is None:
+            return
+        
+        csv_uri = dialog.selected_csv_uri
+        video_prefix = dialog.selected_video_prefix
+        profile = dialog.selected_profile
+        if not csv_uri or not video_prefix:
+            return
+        
+        self._validation_tab._aws_profile = profile
+
+        # Download the CSV to local cache to open_session can parse it
+        local_csv = self._s3_download_to_cache(csv_uri, profile)
+        if local_csv is None:
+            return
+        
+        # video_prefix is an S3 URI like "s3://bucket/videos/" —
+        # open_session → resolve_video_paths classifies every source
+        # from the CSV as an S3 source, and _download_s3_videos
+        # handles the caching.
+        self._validation_tab.open_session(
+            csv_path=local_csv,
+            video_dir=video_prefix,
+        )
+        self._update_session_status()
+
+    # --- OPEN FROM S3 DIALOGS ---
+    def _open_s3_browser(self, mode):
+        """
+        Open the S3 browser dialog in the given mode and return the dialog if
+        accepted, or None if cancelled.
+
+        Checks for AWS profiles first and shows an error if none are found.
+
+        Args:
+            mode: S3BrowserMode.VIDEO or S3BrowserMode.SESSION
+
+        Returns:
+            The accepted S3BrowserDialog, or None.
+        """
+        from seavision.gui.validation.s3_browser import S3BrowserDialog
+
+        profiles = self._validation_tab._get_aws_profiles()
+        if not profiles:
+            QMessageBox.warning(
+                self,
+                "No AWS Profiles",
+                "No AWS profiles are configured on this machine.\n\n"
+                "To set up a profile, run:\n"
+                "  aws configure sso\n\n"
+                "See docs/AWS_SETUP.md for details.", #TODO: This should be a link toonline doce or a proper local help document
+            )
+            return None
+        
+        dialog = S3BrowserDialog(profiles, mode, parent=self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        
+        return dialog
+    
+    def _s3_download_to_cache(
+        self, uri: str, profile: str
+    ) -> str | None:
+        """
+        Download a single S3 URI to the local cache.
+
+        Shows a busy cursor during the download and an error dialog on failure.
+
+        Returns:
+            The local file path as a string, or None on failure.
+        """
+        from PySide6.QtCore import Qt
+        from seavision.gui.validation.video_cache import S3VideoCache
+
+        cache = S3VideoCache(
+            cache_dir = self._validation_tab._get_cache_dir()
+        )
+
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            local_path = cache.get_or_download(
+                uri, profile_name=profile
+            )
+            return str(local_path)
+        except RuntimeError as e:
+            QMessageBox.warning(
+                self,
+                "Download Error",
+                f"Failed to download {uri}:\n\n{e}",
+            )
+            return None
+        finally:
+            QApplication.restoreOverrideCursor()
+
     def _update_session_status(self) -> None:
         """Update the status bar with session information."""
         tab = self._validation_tab
@@ -208,8 +389,6 @@ class MainWindow(QMainWindow):
             )
             if not path:
                 return
-            
-        from seavision.gui.validation.session import SessionManager
 
         try:
             SessionManager.save_session(
@@ -218,6 +397,7 @@ class MainWindow(QMainWindow):
                 tab._csv_path,
                 tab._video_dir,
                 aws_profile=tab._aws_profile,
+                cache_dir=str(tab._cache_dir) if tab._cache_dir else None,
             )
             tab._session_save_path = Path(path)
             tab._has_unsaved_changes = False
@@ -227,20 +407,12 @@ class MainWindow(QMainWindow):
                 self, "Save Error",
                 f"Failed to save session:\n\n{e}",
             ) 
-
-    def _on_load_session(self) -> None:
-        """Load a previously saved session."""
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Load Session",
-            str(Path.home()),
-            "SeaVision Session (*.seavision-session)",
-        )
-        if not path:
-            return
         
-        from seavision.gui.validation.session import SessionManager
+        self._add_recent_session(path)
+        self.update_title()
 
+    def _load_session_from_path(self, path: str) -> None:
+        """Load a previously saved session from a specific path."""
         try:
             session_data = SessionManager.load_session(path)
         except (FileNotFoundError, ValueError) as e:
@@ -301,6 +473,11 @@ class MainWindow(QMainWindow):
             tab._session_save_path = Path(path)
             tab._has_unsaved_changes = False
             tab._aws_profile = session_data.get("aws_profile")
+            loaded_cache_dir = session_data.get("cache_dir")
+            if loaded_cache_dir and Path(loaded_cache_dir).is_dir():
+                tab._cache_dir = Path(loaded_cache_dir)
+            else:
+                tab._cache_dir = None
 
             msg = (
                 f"Session loaded: {stats['applied']} review actions restored."
@@ -310,6 +487,22 @@ class MainWindow(QMainWindow):
             if stats["skipped"] > 0:
                 msg += f" ({stats['skipped']} skipped — CSV may have changed)"
             self.statusBar().showMessage(msg)
+
+        self.update_title()
+        self._add_recent_session(path)
+
+    def _on_load_session(self) -> None:
+        """Load a previously saved session."""
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load Session",
+            str(Path.home()),
+            "SeaVision Session (*.seavision-session)",
+        )
+        if not path:
+            return
+        
+        self._load_session_from_path(path)
 
     def _on_export(self) -> None:
         """Export confirmed detections to CSV."""
@@ -347,6 +540,7 @@ class MainWindow(QMainWindow):
                 f"Failed to export detections:\n\n{e}",
             )
 
+    # --- CACHE TOOL HANDLERS ---
     def _on_clear_cache(self) -> None:
         """Show cache size and offer to clear it."""
         from seavision.gui.validation.video_cache import S3VideoCache
@@ -380,8 +574,213 @@ class MainWindow(QMainWindow):
                 f"Cache cleared: {freed_mb:.1f} MB freed"
             )
 
+    def _on_set_cache_location(self) -> None:
+        """Let the user choose where S3 videos are cached."""
+        tab = self._validation_tab
+        current = tab._get_cache_dir()
+
+        new_dir = QFileDialog.getExistingDirectory(
+            self,
+            "Choose Video Cache Location",
+            str(current)
+        )
+        if not new_dir:
+            return
+        
+        tab._set_cache_dir(Path(new_dir))
+        self.statusBar().showMessage(
+            f"Cache location set to: {new_dir}"
+        )
+
+    def update_title(self) -> None:
+        """
+        Update the window title to reflect the current state.
+
+        Format:
+        - No session: "SeaVision"
+        - Saved session: "SeaVision — session_name.seavision-session"
+        - Unsaved changes: "SeaVision — session_name.seavision-session *"
+        - CSV open but not saved: "SeaVision — detections.csv"
+        """
+        parts = ["SeaVision"]
+
+        tab = self._validation_tab
+        if tab._session_save_path is not None:
+            parts.append("—")
+            parts.append(tab._session_save_path.name)
+        elif tab._csv_path is not None:
+            parts.append("—")
+            parts.append(Path(tab._csv_path).name)
+
+        if tab._has_unsaved_changes:
+            parts.append("*")
+
+        self.setWindowTitle(" ".join(parts))
+
+    # --- DRAG & DROP HANDLER OVERRIDES ---
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        """Accept drag events for supported file types."""
+        if event.mimeData().hasUrls():
+            for url in event.mimeData().urls():
+                path = url.toLocalFile().lower()
+                if path.endswith(
+                    (".csv", ".ts", ".mp4", ".avi", ".mkv",
+                     ".seavision-session")
+                ):
+                    event.acceptProposedAction()
+                    return
+        event.ignore()
+
+    def dropEvent(self, event: QDropEvent) -> None:
+        """Handle dropped files."""
+        for url in event.mimeData().urls():
+            path = url.toLocalFile()
+            lower = path.lower()
+
+            if lower.endswith(".seavision-session"):
+                self._load_session_from_path(path)
+                return
+
+            if lower.endswith(".csv"):
+                # Trigger the open session flow with this CSV
+                self._on_open_session(csv_path=path)
+                return
+
+            if lower.endswith((".ts", ".mp4", ".avi", ".mkv")):
+                self._validation_tab.open_video(path)
+                return
+
+    # --- Save window state (size, splitter location etc) between sessions ---
+    def _save_settings(self) -> None:
+        """Persist window geometry and state."""
+        from PySide6.QtCore import QSettings
+
+        settings = QSettings("SeaVision", "SeaVision")
+        settings.setValue("geometry", self.saveGeometry())
+        settings.setValue("windowState", self.saveState())
+
+        # Save splitter positions from the validation tab
+        tab = self._validation_tab
+        if hasattr(tab, '_outer_splitter'):
+            settings.setValue(
+                "outerSplitter", tab._outer_splitter.saveState()
+            )
+        if hasattr(tab, '_right_splitter'):
+            settings.setValue(
+                "rightSplitter", tab._right_splitter.saveState()
+            )
+
+        # Save the playback speed
+        if hasattr(tab, '_transport'):
+            settings.setValue(
+                "playbackSpeed",
+                tab._transport._speed_combo.currentText()
+            )
+
+    # --- Restore saved settings from previous session ---
+    def _restore_settings(self) -> None:
+        """Restore window geometry and state from previous session."""
+        settings = QSettings("SeaVision", "SeaVision")
+
+        geometry = settings.value("geometry")
+        if geometry is not None:
+            self.restoreGeometry(geometry)
+
+        state = settings.value("windowState")
+        if state is not None:
+            self.restoreState(state)
+
+        tab = self._validation_tab
+        outer = settings.value("outerSplitter")
+        if outer is not None and hasattr(tab, '_outer_splitter'):
+            tab._outer_splitter.restoreState(outer)
+
+        right = settings.value("rightSplitter")
+        if right is not None and hasattr(tab, '_right_splitter'):
+            tab._right_splitter.restoreState(right)
+
+        speed = settings.value("playbackSpeed")
+        if speed is not None and hasattr(tab, '_transport'):
+            idx = tab._transport._speed_combo.findText(speed)
+            if idx >= 0:
+                tab._transport._speed_combo.setCurrentIndex(idx)
+
+    # --- Handle recent session cache ---
+    def _add_recent_session(self, path: str) -> None:
+        """Add a session path to the recent sessions list."""
+
+        settings = QSettings("SeaVision", "SeaVision")
+        recent = settings.value("recentSessions", [])
+        if not isinstance(recent, list):
+            recent = []
+
+        # Remove if already present (will re-add at top)
+        if path in recent:
+            recent.remove(path)
+
+        recent.insert(0, path)
+        recent = recent[:5]  # Keep at most 5
+
+        settings.setValue("recentSessions", recent)
+        self._rebuild_recent_menu()
+
+    def _get_recent_sessions(self) -> list[str]:
+        """Get the list of recent session paths."""
+
+        settings = QSettings("SeaVision", "SeaVision")
+        recent = settings.value("recentSessions", [])
+        if not isinstance(recent, list):
+            return []
+        # Filter out paths that no longer exist
+        return [p for p in recent if Path(p).exists()]
+    
+    def _rebuild_recent_menu(self) -> None:
+        """Rebuild the Recent Sessions submenu."""
+        self._recent_menu.clear()
+
+        recent = self._get_recent_sessions()
+        if not recent:
+            no_recent = QAction("(no recent sessions)", self)
+            no_recent.setEnabled(False)
+            self._recent_menu.addAction(no_recent)
+            return
+
+        for path in recent:
+            action = QAction(Path(path).name, self)
+            action.setToolTip(path)
+            action.setData(path)
+            action.triggered.connect(self._on_open_recent)
+            self._recent_menu.addAction(action)
+
+        self._recent_menu.addSeparator()
+        clear_action = QAction("Clear Recent Sessions", self)
+        clear_action.triggered.connect(self._on_clear_recent)
+        self._recent_menu.addAction(clear_action)
+
+    def _on_open_recent(self) -> None:
+        """Open a session from the recent sessions list."""
+        action = self.sender()
+        if action is None:
+            return
+        path = action.data()
+        if path and Path(path).exists():
+            self._load_session_from_path(path)
+        else:
+            QMessageBox.warning(
+                self, "File Not Found",
+                f"Session file no longer exists:\n{path}"
+            )
+            self._rebuild_recent_menu()
+
+    def _on_clear_recent(self) -> None:
+        """Clear the recent sessions list."""
+        settings = QSettings("SeaVision", "SeaVision")
+        settings.setValue("recentSessions", [])
+        self._rebuild_recent_menu()
 
     def closeEvent(self, event):
+        self._save_settings()
+        
         tab = self._validation_tab
 
         if tab._has_unsaved_changes:

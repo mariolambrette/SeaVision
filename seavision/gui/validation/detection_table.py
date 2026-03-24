@@ -11,6 +11,7 @@ from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
+    QMenu,
     QTableView,
 )
 
@@ -340,11 +341,20 @@ class DetectionTableView(QTableView):
     """
 
     detection_selected = Signal(int, int) # row index, frame number
+    context_action = Signal(str, int) # action_name, source_row
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._proxy: DetectionFilterProxy | None = None
         self._setup_appearance()
+
+        # --- Right click context menus ---
+        self.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu
+        )
+        self.customContextMenuRequested.connect(
+            self._on_context_menu
+        )
 
     def _setup_appearance(self) -> None:
         """Configure the table's visual behaiour."""
@@ -449,4 +459,43 @@ class DetectionTableView(QTableView):
             self.setCurrentIndex(proxy_index)
             self.scrollTo(proxy_index)
 
-    
+    def _on_context_menu(self, pos) -> None:
+        """Show a context menu for the right clicked row."""
+        index = self.indexAt(pos)
+        if not index.isValid():
+            return
+        
+        # Map through the proxy to get the source row
+        source_index = self._proxy.mapToSource(index)
+        source_row = source_index.row()
+
+        menu = QMenu(self)
+
+        confirm = menu.addAction("Confirm")
+        reject = menu.addAction("Reject")
+        skip = menu.addAction("Skip")
+
+        # Check if this is a manual detection
+        model = self._proxy.sourceModel()
+
+        vd = model.detection_at(source_row)
+        remove = None
+        if vd and vd.is_manual:
+            menu.addSeparator()
+            remove = menu.addAction("Remove")
+
+        menu.addSeparator()
+        select = menu.addAction("Select")
+
+        action = menu.exec(self.viewport().mapToGlobal(pos))
+
+        if action == confirm:
+            self.context_action.emit("confirm", source_row)
+        elif action == reject:
+            self.context_action.emit("reject", source_row)
+        elif action == skip:
+            self.context_action.emit("skip", source_row)
+        elif action is remove:
+            self.context_action.emit("remove", source_row)
+        elif action == select:
+            self.context_action.emit("select", source_row)

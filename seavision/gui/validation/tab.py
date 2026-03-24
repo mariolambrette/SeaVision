@@ -6,10 +6,18 @@ layout.
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QThread, QTimer, QObject, Qt, Signal
+from PySide6.QtCore import (
+    QThread, 
+    QTimer, 
+    QObject,
+    QSettings,
+    Qt, 
+    Signal,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
+    QFileDialog,
     QHBoxLayout,
     QInputDialog,
     QMainWindow,
@@ -25,6 +33,7 @@ from PySide6.QtGui import(
 )
 
 from seavision.gui.shared.session_utils import resolve_video_paths
+from seavision.gui.validation.button_styles import ReviewButtonStyles
 from seavision.gui.validation.detection_detail import DetectionDetailPanel
 from seavision.gui.validation.detection_table import(
     DetectionFilterProxy,
@@ -51,6 +60,7 @@ from seavision.engine.visualiser import (
     CSVDetectionLoader,
     ListDetectionSource,
 )
+from seavision.engine.detectors import Detection
 from seavision.engine.source.base import VideoMetadata
 
 logger = logging.getLogger(__name__)
@@ -132,7 +142,92 @@ class _S3DownloadWorker(QObject):
 
         self.finished.emit(success, failed)
 
-                
+
+class _StatusFilteredDetectionSource:
+    """
+    Adapter between ValidationModel and the video worker.
+
+    Implements the DetectionSource interface (get_detections_for_frame) while
+    filtering by review status and attaching per-detection colour hints for the
+    annotator.
+
+    Thread safety: This object is read by the worker thread and written
+    (show_rejected toggle) by the main thread. The shared state is a sinle
+    boolean, which is atomic under the GIL. No lock is needed.
+    """
+
+    # BGR colours for each status
+    _STATUS_COLOURS = {
+        ValidationStatus.PENDING:   (0, 0, 255),     # Red
+        ValidationStatus.CONFIRMED: (0, 200, 0),     # Green
+        ValidationStatus.CORRECTED: (0, 200, 0),     # Green
+        ValidationStatus.REJECTED:  (128, 128, 128), # Grey
+        ValidationStatus.SKIPPED:   (128, 128, 128), # Grey
+    }
+
+    def __init__(
+        self,
+        model: ValidationModel,
+        source_file: str,
+    ) -> None:
+        self._model = model
+        self._source_file = source_file
+        self._show_rejected = False,
+        self._show_all = True # When False hide all overlays
+
+    @property
+    def show_rejected(self) -> bool:
+        return self._show_rejected
+    
+    @show_rejected.setter
+    def show_rejected(self, value: bool) -> None:
+        self._show_rejected = value
+
+    @property
+    def show_all(self) -> bool:
+        return self._show_all
+    
+    @show_all.setter
+    def show_all(self, value: bool) -> None:
+        self._show_all = value
+
+    def get_detections_for_frame(
+            self, frame_number: int
+    ) -> list[Detection]:
+        """
+        Return detections for a frame, filtered by status.
+
+        Each returned Detection has an additional `_render_colour` attribute
+        (a BGR tupple) set based on its review status. Rejected and skipped
+        detections are excluded unless show_rejected is True.
+        """
+        if not self._show_all:
+            return []
+        
+        validated = self._model.get_detections_for_frame(
+            self._source_file, frame_number
+        )
+
+        result = []
+        for vd in validated:
+            # Filter rejected and skipped unless toggled on
+            if vd.status in (
+                ValidationStatus.REJECTED,
+                ValidationStatus.SKIPPED,
+            ) and not self._show_rejected:
+                continue
+
+            det = vd.detection
+
+            # Attach a render colour based on status
+            det._render_colour = self._STATUS_COLOURS.get(
+                vd.status, (0, 0, 255)
+            )
+            result.append(det)
+
+        return result
+
+
 class ValidationTab(QWidget):
     """
     Main validation interface - video viewer with transport controls.
@@ -153,6 +248,7 @@ class ValidationTab(QWidget):
     _clear_detection_source = Signal()
     _request_frame_immediate = Signal(int)
     _set_highlight = Signal(object) # Detection object or None
+    _set_playback_speed = Signal(float) # Playback speed multiplier
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -171,21 +267,17 @@ class ValidationTab(QWidget):
         # Top row - review actions
         review_row = QHBoxLayout()
         self._confirm_btn = QPushButton("Confirm (C)")
-        self._confirm_btn.setStyleSheet(
-            "QPushButton { background-color: #2d5a3d; color: white; "
-            "padding: 8px 16px; font-weight: bold; }"
-            "QPushButton:disabled { background-color: #555; color: #999; }"
-        )
+        self._confirm_btn.setStyleSheet(ReviewButtonStyles().confirm)
         self._confirm_btn.setToolTip(
             "Confirm selected detection (C)\n"
             "Shift+C to confirm all on this frame"
         )
 
         self._reject_btn = QPushButton("Reject (R)")
-        self._reject_btn.setStyleSheet(
-            "QPushButton { background-color: #8b2020; color: white; "
-            "padding: 8px 16px; font-weight: bold; }"
-            "QPushButton:disabled { background-color: #555; color: #999; }"
+        self._reject_btn.setStyleSheet(ReviewButtonStyles().reject)
+        self._reject_btn.setToolTip(
+            "Reject selected detection (R)\n"
+            "Shift+R to reject all on this frame"
         )
         self._reject_btn.setToolTip(
             "Reject selected detection (R)\n"
@@ -193,11 +285,7 @@ class ValidationTab(QWidget):
         )
 
         self._skip_btn = QPushButton("Skip (S)")
-        self._skip_btn.setStyleSheet(
-            "QPushButton { background-color: #555; color: white; "
-            "padding: 8px 16px; font-weight: bold; }"
-            "QPushButton:disabled { background-color: #444; color: #777; }"
-        )
+        self._skip_btn.setStyleSheet(ReviewButtonStyles().skip)
         self._skip_btn.setToolTip(
             "Skip selected detection (S)\n"
             "Shift+S to skip all on this frame"
@@ -211,12 +299,10 @@ class ValidationTab(QWidget):
         edit_row = QHBoxLayout()
 
         self._add_btn = QPushButton("Add Detection (A)")
-        self._add_btn.setStyleSheet(
-            "QPushButton { background-color: #2d6da8; color: white; "
-            "padding: 8px 16px; }"
-            "QPushButton:disabled { background-color: #444; color: #777; }"
-            "QPushButton:checked { background-color: #1a4a7a; "
-            "border: 2px solid #88bbee; }"
+        self._add_btn.setStyleSheet(ReviewButtonStyles().add)
+        self._add_btn.setToolTip(
+            "Add a new detection (A)\n"
+            "Shift+A to add detection at cursor position"
         )
         self._add_btn.setCheckable(True)
         self._add_btn.setToolTip(
@@ -225,11 +311,7 @@ class ValidationTab(QWidget):
         self._add_btn.toggled.connect(self._on_add_mode_toggled)
 
         self._remove_btn = QPushButton("Remove")
-        self._remove_btn.setStyleSheet(
-            "QPushButton { background-color: #6b3a3a; color: white; "
-            "padding: 8px 16px; }"
-            "QPushButton:disabled { background-color: #444; color: #777; }"
-        )
+        self._remove_btn.setStyleSheet(ReviewButtonStyles().reject)
         self._remove_btn.setToolTip(
             "Remove a manually added detection (not available for "
             "pipeline detections)"
@@ -343,6 +425,9 @@ class ValidationTab(QWidget):
         self._session_save_path: Path | None = None
         self._has_unsaved_changes: bool = False
         self._aws_profile: str | None = None
+        self._cache_dir: str | None = None
+        self._active_detection_adapter: _StatusFilteredDetectionSource | None = None
+        self._video_is_preloaded: bool = False
 
         # --- Connect private signals to worker slots ---
         self._request_open.connect(self._worker.open_video)
@@ -358,6 +443,7 @@ class ValidationTab(QWidget):
             self._worker.request_frame_immediate
         )
         self._set_highlight.connect(self._worker.set_highlight_detection)
+        self._set_playback_speed.connect(self._worker.set_speed)
 
         # --- Connect worker signals to slots ---
         self._worker.frame_ready.connect(self._viewer.update_frame)
@@ -378,10 +464,14 @@ class ValidationTab(QWidget):
         self._transport.next_detection_clicked.connect(
             self._on_next_detection
         )
+        self._transport.speed_changed.connect(self._set_playback_speed)
 
         # --- Connect detection table signals ---
         self._detection_table.detection_selected.connect(
             self._on_detection_selected
+        )
+        self._detection_table.context_action.connect(
+            self._on_table_context_action
         )
 
         # --- Connect action button clicks ---
@@ -490,6 +580,7 @@ class ValidationTab(QWidget):
         self._video_dir = video_dir
         self._session_save_path = None
         self._has_unsaved_changes = False
+        self._cache_dir = None
 
         # --- Create validation model ---
         self._validation_model = ValidationModel(loader, parent=self)
@@ -618,6 +709,9 @@ class ValidationTab(QWidget):
         Args:
             source_name: The source_file value from the CSV.
         """
+        # CLear existing status messages
+        self._clear_status()
+        
         local_path = self._video_paths.get(source_name)
         if local_path is None:
             logger.error(
@@ -628,14 +722,12 @@ class ValidationTab(QWidget):
 
         self._active_source_file = source_name
 
-        # --- Send the detection source to the worker ---
-        # The worker needs a CSVDetectionLoader for the annotator. Create a
-        # filtered one for just this video's detections
-        filtered_loader = CSVDetectionLoader(
-          str(self._csv_loader.csv_path),
-          source_file=source_name,
+        # --- Send status-aware detection source to the worker ---
+        self._active_detection_adapter = _StatusFilteredDetectionSource(
+            self._validation_model,
+            source_name,
         )
-        self._set_detection_source.emit(filtered_loader)
+        self._set_detection_source.emit(self._active_detection_adapter)
 
         # --- Populate the detection table from the ValidationModel ---
         validated_dets = self._validation_model.get_detections_for_video(
@@ -643,6 +735,9 @@ class ValidationTab(QWidget):
         ) 
         fps = self._metadata.fps if self._metadata else None
         self._detection_model.set_detections(validated_dets, fps=fps)
+
+        has_detections = len(validated_dets) > 0
+        self._transport.set_detection_nav_enabled(has_detections)
 
         # --- Clear selection state ---
         self._detail_panel.clear()
@@ -652,12 +747,13 @@ class ValidationTab(QWidget):
         # --- Open video
         preload = self._should_preload(local_path)
         self._request_open.emit(local_path, preload)
+        self._video_is_preloaded = preload
 
         logger.info(
             "Opened source '%s' (%s) — %d detection frames",
             source_name,
             local_path,
-            len(filtered_loader.get_frame_numbers_with_detections()),
+            len(self._active_detection_adapter.get_frame_numbers_with_detections()),
         )
 
     def _on_video_selected(self, source_file: str) -> None:
@@ -725,8 +821,18 @@ class ValidationTab(QWidget):
         self._has_unsaved_changes = False
         self._video_list.clear()
 
+        # Disable detection navigation buttons
+        self._transport.set_detection_nav_enabled(False)
+
+        # Disable review buttons
+        self._confirm_btn.setEnabled(False)
+        self._reject_btn.setEnabled(False)
+        self._skip_btn.setEnabled(False)
+        self._remove_btn.setEnabled(False)
+
         preload = self._should_preload(filepath)
         self._request_open.emit(filepath, preload)
+        self._video_is_preloaded = preload
 
     def _on_video_opened(self, metadata: VideoMetadata) -> None:
         """Worker has opened a video — configure the UI."""
@@ -740,13 +846,41 @@ class ValidationTab(QWidget):
             self._detection_model._fps = metadata.fps
             self._detection_model.layoutChanged.emit()
 
+        # Auto-select the first unreviewed detection
+        if (self._validation_model is not None
+                and self._active_source_file is not None):
+            first = self._validation_model.get_next_unreviewed(
+                self._active_source_file
+            )
+            if first is not None:
+                row = self._find_row_for_detection(first)
+                if row is not None:
+                    self._detection_table.select_row(row)
+            elif self._detection_model.detection_count() > 0:
+                # All reviewed — select the first detection anyway
+                self._detection_table.select_row(0)
+
     def _download_s3_videos(
             self, 
             s3_uris: list[str],
             on_complete: callable = None,
         ) -> None:
         """Download S3 videos to local cache with progress dialog."""
-        cache = S3VideoCache()
+        cache_dir = self._cache_dir or self._get_cache_dir()
+        cache = S3VideoCache(cache_dir=Path(cache_dir))
+
+        # --- Check if any S3 videos still need downloading ---
+        uncached_uris = []
+        for uri in s3_uris:
+            cached_path = cache.get_cached_path(uri)
+            if cached_path is not None and Path(cached_path).exists():
+                self._video_paths[uri] = str(cached_path)
+            else:
+                uncached_uris.append(uri)
+
+        if not uncached_uris:
+            self._show_status("All S3 videos loaded from local cache.")
+            return # All videos already cached, no need to ask or download
 
         # Ask the user which AWS profile to use
         profile_name = self._ask_aws_profile()
@@ -758,7 +892,7 @@ class ValidationTab(QWidget):
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             total_bytes, need_download = cache.calculate_download_size(
-                s3_uris, profile_name=self._aws_profile
+                uncached_uris, profile_name=self._aws_profile
             )
         except RuntimeError as e:
             QMessageBox.warning(
@@ -771,28 +905,94 @@ class ValidationTab(QWidget):
         
         if not need_download:
             # All already cached
-            for uri in s3_uris:
+            for uri in uncached_uris:
                 local_path = cache.cache_dir / cache._cache_key(uri)
                 self._video_paths[uri] = str(local_path)
             return
         
         size_mb = total_bytes / (1024 * 1024)
-        reply = QMessageBox.question(
-            self,
-            "Download S3 Videos",
+        
+        # --- Confirm s3 dowload and allow cache relocation ---
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Question)
+        msg.setWindowTitle("Download S3 Videos")
+        msg.setText(
             f"This session requires downloading {len(need_download)} "
             f"video(s) (~{size_mb:.1f} MB) from S3.\n\n"
             f"Cache location: {cache.cache_dir}\n\n"
-            f"Continue?",
-            QMessageBox.StandardButton.Yes
-            | QMessageBox.StandardButton.No,
+            f"Continue?"
         )
+        download_btn = msg.addButton(
+            "Download", QMessageBox.ButtonRole.AcceptRole
+        )
+        change_btn = msg.addButton(
+            "Change Location…", QMessageBox.ButtonRole.ActionRole
+        )
+        cancel_btn = msg.addButton(
+            "Cancel", QMessageBox.ButtonRole.RejectRole
+        )
+        msg.setDefaultButton(download_btn)
+        msg.exec()
 
-        if reply != QMessageBox.StandardButton.Yes:
+        clicked = msg.clickedButton()
+
+        if clicked == change_btn:
+            new_dir = QFileDialog.getExistingDirectory(
+                self,
+                "Choose Cache Location",
+                str(cache.cache_dir),
+            )
+            if not new_dir:
+                return  # User cancelled the directory picker
+
+            # Persist the new location and rebuild the cache object
+            self._set_cache_dir(Path(new_dir))
+            self._cache_dir = new_dir
+            cache = S3VideoCache(cache_dir=Path(new_dir))
+
+            # Re-check what's already cached in the new location
+            need_download = []
+            total_bytes = 0
+            for uri in uncached_uris:
+                cached_path = cache.get_cached_path(uri)
+                if cached_path is not None and Path(cached_path).exists():
+                    self._video_paths[uri] = str(cached_path)
+                else:
+                    need_download.append(uri)
+
+            if not need_download:
+                self._show_status("All S3 videos loaded from cache.")
+                if on_complete is not None:
+                    on_complete()
+                return
+
+            # Recalculate size for remaining downloads
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                total_bytes, need_download = cache.calculate_download_size(
+                    need_download, profile_name=self._aws_profile
+                )
+            except RuntimeError as e:
+                QMessageBox.warning(
+                    self, "S3 Access Error",
+                    f"Cannot access S3 videos:\n\n{e}",
+                )
+                return
+            finally:
+                QApplication.restoreOverrideCursor()
+
+        elif clicked == cancel_btn or clicked is None:
+            return
+
+        # If nothing left to download after cache relocation check
+        if not need_download:
+            self._show_status("All S3 videos loaded from cache.")
+            if on_complete is not None:
+                on_complete()
             return
         
         # Add already cached URIs
-        for uri in s3_uris:
+        for uri in uncached_uris:
             if uri not in need_download and cache.is_cached(uri):
                 local_path = cache.cache_dir / cache._cache_key(uri)
                 self._video_paths[uri] = str(local_path)
@@ -915,6 +1115,24 @@ class ValidationTab(QWidget):
                 profiles.append(section[len("profile "):])
 
         return profiles
+    
+    @staticmethod
+    def _get_cache_dir() -> Path:
+        """
+        Read the user's preferred cache directory from QSettings,
+        falling back to the default ~/.seavision/cache/.
+        """
+        settings = QSettings("SeaVision", "SeaVision")
+        saved = settings.value("s3CacheDir")
+        if saved and Path(saved).is_dir():
+            return Path(saved)
+        return Path.home() / ".seavision" / "cache"
+    
+    @staticmethod
+    def _set_cache_dir(path: Path) -> None:
+        """Persist the user's preferred cache directory to QSettings."""
+        settings = QSettings("SeaVision", "SeaVision")
+        settings.setValue("s3CacheDir", str(path))
 
     def _refresh_video_list_availability(self) -> None:
         """Re-populate the video list with updated availability."""
@@ -1120,15 +1338,26 @@ class ValidationTab(QWidget):
         return None
 
     def _on_seek(self, frame_number: int) -> None:
-        """User dragged the slider - denouce rapid seeks."""
+        """
+        User is dragging the slider — update the display.
+
+        For pre-loaded videos, send the frame request immediately
+        (array lookup is O(1)). For non-preloaded videos, debounce
+        to avoid overwhelming cv2.VideoCapture with rapid seeks.
+        """
         if self._is_playing:
             self._request_stop.emit()
             self._is_playing = False
             self._transport.set_playing(False)
 
-        self._pending_seek = frame_number
-        if not self._seek_timer.isActive():
-            self._seek_timer.start()
+        if self._video_is_preloaded:
+            # Instant response for pre-loaded videos
+            self._request_frame.emit(frame_number)
+        else:
+            # Debounce for disk-based seeking
+            self._pending_seek = frame_number
+            if not self._seek_timer.isActive():
+                self._seek_timer.start()
 
     def _on_seek_committed(self, frame_number: int) -> None:
         """User released the slider - jump directly to the final frame."""
@@ -1161,17 +1390,37 @@ class ValidationTab(QWidget):
         self._is_playing = False
         self._transport.set_playing(False)
 
-    # --- Deteection status ---
+    # --- Detection status view update ---
+    def set_overlays_visible(self, visible: bool) -> None:
+        """Toggle all detection overlays on or off."""
+        if self._active_detection_adapter is not None:
+            self._active_detection_adapter.show_all = visible
+        # Re-render the current frame
+        if self._metadata is not None and not self._is_playing:
+            self._request_frame.emit(self._current_frame)
+
+    def set_rejected_visible(self, visible: bool) -> None:
+        """Toggle visibility of rejected and skipped detections."""
+        if self._active_detection_adapter is not None:
+            self._active_detection_adapter.show_rejected = visible
+        if self._metadata is not None and not self._is_playing:
+            self._request_frame.emit(self._current_frame)
+
+    # --- Detection status ---
     def _on_detection_status_changed(
         self, detection_id: int, new_status: ValidationStatus
     ) -> None:
         """
-        Handle a detection's dtatus changing.
+        Handle a detection's status changing.
 
         Finds the row in the table model and emits dataChanged so the view
         repaints that row with updated status and colours.
         """
         self._has_unsaved_changes = True
+
+        main_window = self.window()
+        if hasattr(main_window, 'update_title'):
+            main_window.update_title()
         
         # Find which row this detection is in the source model
         for row, vd in enumerate(self._detection_model._detections):
@@ -1185,6 +1434,10 @@ class ValidationTab(QWidget):
                     top_left, bottom_right
                 )
                 break
+
+        # Re-render the current frame to update box colours
+        if self._metadata is not None and not self._is_playing:
+            self._request_frame.emit(self._current_frame)
 
     def _on_progress_changed(self, progress: dict) -> None:
         """Update the status bar with progress."""
@@ -1330,7 +1583,10 @@ class ValidationTab(QWidget):
         self._advance_to_next()
 
     def _advance_to_next(self) -> None:
-        """Advance to the next unreviewed detection in the current video."""
+        """
+        Advance to the next unreviewed detection. If no more detections in this
+        video are unreviewed, move onto the next video in the list.
+        """
         if self._validation_model is None:
             return
         if self._active_source_file is None:
@@ -1349,9 +1605,59 @@ class ValidationTab(QWidget):
         if next_det is not None:
             self._select_validated_detection(next_det)
         else:
-            self._show_status(
-                "All detections reviewed for this video."
-            )
+            # Move onto next video
+            advanced = self._advance_to_next_video()
+            if not advanced:
+                self._show_status(
+                    "All detections reviewed."
+                )
+
+    def _advance_to_next_video(self) -> bool:
+        """
+        Advance to the next video that has unreviewed detections.
+
+        Searches all videos in the session (starting after the current one) for
+        any with PENDING detections. If found, switches to that video and
+        selects its first unreviewed detection.
+
+        Returns:
+            True if video with unreviewed detections was found and loaded, False
+            if all videos are fully reviewed.
+        """
+        if self._validation_model is None:
+            return False
+        
+        all_sources = self._validation_model.get_all_source_files()
+        if not all_sources:
+            return False
+        
+        # Find current video's position in the list
+        try:
+            current_idx = all_sources.index(self._active_source_file)
+        except ValueError:
+            current_idx = -1
+
+        # Search forward from the next video, wrapping around
+        for offset in range(1, len(all_sources)):
+            idx = (current_idx + offset) % len(all_sources)
+            source = all_sources[idx]
+
+            # Skip videos that aren't available locally
+            if source not in self._video_paths:
+                continue
+
+            # Check if this video has unreviewed detections
+            next_vd = self._validation_model.get_next_unreviewed(source)
+            if next_vd is not None:
+                # Switch to this video
+                self._video_list.select_video(source)
+                # The video_selected signal will fire, which calls
+                # _on_video_selected -> _open_video_for_source.
+                # The auto-select in Step 7 will pick the first
+                # unreviewed detection.
+                return True
+
+        return False
 
     def _select_validated_detection(
             self, validated_det: ValidatedDetection
@@ -1486,10 +1792,38 @@ class ValidationTab(QWidget):
         # refresh the frame to show the added detection
         self._request_frame.emit(current_frame)
 
+    # --- Context menu handlers ---
+    def _on_table_context_action(
+        self, action_name: str, source_row: int
+    ) -> None:
+        """Handle a context menu action from the detection table."""
+        vd = self._detection_model.detection_at(source_row)
+        if vd is None:
+            return
+
+        if action_name == "confirm":
+            self._validation_model.set_status(
+                vd.id, ValidationStatus.CONFIRMED
+            )
+        elif action_name == "reject":
+            self._validation_model.set_status(
+                vd.id, ValidationStatus.REJECTED
+            )
+        elif action_name == "skip":
+            self._validation_model.set_status(
+                vd.id, ValidationStatus.SKIPPED
+            )
+        elif action_name == "remove":
+            self._validation_model.remove_detection(vd.id)
+        elif action_name == "select":
+            self._select_validated_detection(vd)
+
 
     # --- Error handling and shutdown ---
     def _on_error(self, message: str) -> None:
         """Worker reported an error."""
+        logger.warning("Worker error: %s", message)
+        self._show_status(f"⚠ {message}")
         QMessageBox.warning(self, "Video Error", message)
 
     def shutdown(self) -> None:

@@ -34,7 +34,12 @@ class FrameDisplay(QLabel):
 
         # Placeholder appearance
         self.setStyleSheet("background-color: #1e1e1e; color: #888888;")
-        self.setText("No video loaded")
+        self.setText(
+            "Open a video or session to begin\n\n"
+            "File → New Session (Ctrl+N)\n"
+            "File → Open Video (Ctrl+O)\n\n"
+            "Or drag a CSV or video file here"
+        )
 
         # Placeholder for the unscaled original frame
         self._original_pixmap: QPixmap | None = None

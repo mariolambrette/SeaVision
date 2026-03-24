@@ -57,6 +57,18 @@ class S3VideoCache:
         filename = Path(s3_uri.split("/")[-1]).name
         return f"{uri_hash}_{filename}"
     
+    def get_cached_path(self, s3_uri: str) -> str | None:
+        """
+        Return the local cached path for an S3 URI if it exists.
+
+        Does not attempt to download. Returns None if the file is not in the
+        cache.
+        """ 
+        cache_key = self._cache_key(s3_uri)
+        cache_path = self.cache_dir / cache_key
+        if cache_path.exists():
+            return str(cache_path)
+        return None
 
     def get_or_download(
         self,
@@ -76,10 +88,9 @@ class S3VideoCache:
             )
         
         self._ensure_cache_dir()
-        cache_key = self._cache_key(s3_uri)
-        local_path = self.cache_dir / cache_key
+        local_path = Path(self.get_cached_path(s3_uri))
 
-        if local_path.exists():
+        if local_path is not None and local_path.exists():
             logger.debug("Cache hit for %s", s3_uri)
             return local_path
         

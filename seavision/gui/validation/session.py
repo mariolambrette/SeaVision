@@ -96,6 +96,7 @@ class SessionManager:
         csv_path: str,
         video_dir: str,
         aws_profile: str | None,
+        cache_dir: str | None = None,
     ) -> None:
         """
         Save the current validation state to a .seavision-session JSON file.
@@ -107,6 +108,7 @@ class SessionManager:
             csv_path: Path to the detection CSV (stored for reload).
             video_dir: Path to the video directory (stored for reload).
             aws_profile: The AWS profile name to use for S3 operations.
+            cache_dir: Path to the cache directory (stored for reload).
         """
         path = Path(path)
 
@@ -145,6 +147,7 @@ class SessionManager:
             "csv_path": str(csv_path),
             "video_dir": str(video_dir),
             "aws_profile": aws_profile,
+            "cache_dir": cache_dir,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "decisions": decisions,
             "manual_detections": manual_detections,
@@ -196,6 +199,8 @@ class SessionManager:
             )
 
         data.setdefault("manual_detections", [])
+        data.setdefault("aws_profile", None)
+        data.setdefault("cache_dir", None)
 
         logger.info(
             "Loaded session from %s (%d decisions, %d manual)",
