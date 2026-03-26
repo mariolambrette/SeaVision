@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QMainWindow,
     QMessageBox,
+    QProgressDialog,
     QPushButton,
     QSplitter, 
     QVBoxLayout, 
@@ -446,6 +447,8 @@ class ValidationTab(QWidget):
         self._cache_dir: str | None = None
         self._active_detection_adapter: _StatusFilteredDetectionSource | None = None
         self._video_is_preloaded: bool = False
+        self._s3_progress_dialog: QProgressDialog | None = None
+        self._s3_on_complete = None
 
         # --- Connect private signals to worker slots ---
         self._request_open.connect(self._worker.open_video)
@@ -653,13 +656,10 @@ class ValidationTab(QWidget):
         complete for S3 sessions. The ValidationModel and its signal
         connections are already set up by open_session.
         """
-        print("[DEBUG] _finish_session_setup entered")
         resolved = self._video_paths
-        print(f"[DEBUG] resolved videos: {list(resolved.keys())}")
 
         # --- Check we found at least one video ---
         if not resolved:
-            print("[DEBUG] no resolved videos")
             local_expected = [
                 Path(s).name for s in loader.sources_in_file
                 if not s.startswith("s3://")
@@ -685,8 +685,6 @@ class ValidationTab(QWidget):
             QMessageBox.warning(self, "No Videos Found", message)
             return
         
-        print("[DEBUG] Populating video list")
-
         # --- Populate video list sidebar ---
         video_info = []
         for source_file in self._validation_model.get_all_source_files():
@@ -699,20 +697,14 @@ class ValidationTab(QWidget):
             })
         self._video_list.set_videos(video_info)
 
-        print("[DEBUG] video list populated")
-
         # --- Open the first available video ---
         first_source = next(
             (s for s in loader.sources_in_file if s in resolved),
             None,
         )
-        print(f"[DEBUG] first_source: {first_source}")
         if first_source is not None:
-            print("[DEBUG] calling _open_video_for_source")
             self._open_video_for_source(first_source)
-            print("[DEBUG] _open_video_for_source returned")
 
-        print("[DEBUG] _finish_session_setup complete")
         logger.info(
             "Session setup complete: %d videos available",
             len(resolved),
@@ -720,16 +712,13 @@ class ValidationTab(QWidget):
 
     def _on_s3_downloads_complete(self) -> None:
         """Called when background S3 downloads finish."""
-        print("[DEBUG] _on_s3_downloads_complete entered")
         loader = self._pending_loader
         csv_path = self._pending_csv_path
         self._pending_loader = None
         self._pending_csv_path = None
 
         # Finish setup — video list, open first video
-        print(f"[DEBUG] calling _finish_session_setup with {csv_path}")
         self._finish_session_setup(csv_path, loader)
-        print("[DEBUG] _finish_session_setup returned")
 
     def _open_video_for_source(self, source_name: str) -> None:
         """
@@ -741,14 +730,11 @@ class ValidationTab(QWidget):
         Args:
             source_name: The source_file value from the CSV.
         """
-        print(f"[DEBUG] _open_video_for_source: {source_name}")
         # CLear existing status messages
         self._clear_status()
         
         local_path = self._video_paths.get(source_name)
-        print(f"[DEBUG] local_path: {local_path}")
         if local_path is None:
-            print("[DEBUG] no local path — returning")
             logger.error(
                 "No local path for source: %s", 
                 source_name
@@ -756,18 +742,14 @@ class ValidationTab(QWidget):
             return
 
         self._active_source_file = source_name
-        print("[DEBUG] creating detection adapter")
-
         # --- Send status-aware detection source to the worker ---
         self._active_detection_adapter = _StatusFilteredDetectionSource(
             self._validation_model,
             source_name,
         )
-        print("[DEBUG] emitting detection source")
         self._set_detection_source.emit(self._active_detection_adapter)
 
         # --- Populate the detection table from the ValidationModel ---
-        print("[DEBUG] populating table")
         validated_dets = self._validation_model.get_detections_for_video(
             source_name
         ) 
@@ -784,14 +766,9 @@ class ValidationTab(QWidget):
         self._set_highlight.emit(None)
 
         # --- Open video
-        print("[DEBUG] about to call _should_preload")
         preload = self._should_preload(local_path)
-        print(f"[DEBUG] preload decision: {preload}")
-        print("[DEBUG] emitting _request_open")
         self._request_open.emit(local_path, preload)
         self._video_is_preloaded = preload
-
-        print(f"[DEBUG] _open_video_for_source complete — {len(validated_dets)} detections")
 
         logger.info(
             "Opened source '%s' (%s) — %d detection frames",
@@ -909,6 +886,51 @@ class ValidationTab(QWidget):
             elif self._detection_model.detection_count() > 0:
                 # All reviewed — select the first detection anyway
                 self._detection_table.select_row(0)
+
+    
+    # --- s3 Download logic ---
+    @Slot(int, int)
+    def _on_s3_progress(self, completed: int, total: int) -> None:
+        """Update the S3 download progress dialog from the main thread."""
+        if self._s3_progress_dialog is not None:
+            self._s3_progress_dialog.setValue(completed)
+            self._s3_progress_dialog.setLabelText(
+                f"Downloading video {completed}/{total}..."
+            )
+
+    @Slot(str, str)
+    def _on_s3_file_complete(self, uri: str, path: str) -> None:
+        """Record a successfully downloaded S3 video path."""
+        self._video_paths[uri] = path
+
+    @Slot(str, str)
+    def _on_s3_error(self, uri: str, msg: str) -> None:
+        """Log an S3 download failure."""
+        logger.error("Failed to download S3 video '%s': %s", uri, msg)
+    
+    @Slot(int, int)
+    def _on_s3_finished(self, success: int, failed: int) -> None:
+        """Handle completion of all S3 downloads - runs on the main thread."""
+        if self._s3_progress_dialog is not None:
+            self._s3_progress_dialog.close()
+            self._s3_progress_dialog = None
+
+        if hasattr(self, "_s3_thread") and self._s3_thread is not None:
+            self._s3_thread.quit()
+
+        if failed > 0:
+            QMessageBox.warning(
+                self, "Download Incomplete",
+                f"{failed} video(s) failed to download.\n"
+                f"They will be greyed out in the video list.",
+            )
+
+        if self._s3_on_complete is not None:
+            callback = self._s3_on_complete
+            self._s3_on_complete = None
+            callback()
+
+
 
     def _download_s3_videos(
             self, 
@@ -1048,8 +1070,6 @@ class ValidationTab(QWidget):
                 self._video_paths[uri] = str(local_path)
         
         # Dowload remaining in background
-        from PySide6.QtWidgets import QProgressDialog
-        
         total_files = len(need_download)
         progress_dialog = QProgressDialog(
             f"Downloading video 0/{total_files}...",
@@ -1057,76 +1077,25 @@ class ValidationTab(QWidget):
         )
         progress_dialog.setWindowTitle("S3 Download")
         progress_dialog.setMinimumDuration(0)
-
-        # Prevent automatic shutdown
         progress_dialog.setAutoClose(False)
         progress_dialog.setAutoReset(False)
+
+        # Store dialog box so it can be accessed by @Slot methods
+        self._s3_progress_dialog = progress_dialog
+        self._s3_on_complete = on_complete
 
         self._s3_thread = QThread()
         self._s3_worker = _S3DownloadWorker(cache)
         self._s3_worker.moveToThread(self._s3_thread)
 
-        def _update_download_progress(completed, total):
-            progress_dialog.setValue(completed)
-            progress_dialog.setLabelText(
-                f"Downloading video {completed}/{total}..."
-            )
+        # Connect to @Slot methods on self (a QObject on the main thread).
+        # Qt auto-detects the thread boundary and uses QueuedConnection.
+        self._s3_worker.progress.connect(self._on_s3_progress)
+        self._s3_worker.file_complete.connect(self._on_s3_file_complete)
+        self._s3_worker.error.connect(self._on_s3_error)
+        self._s3_worker.finished.connect(self._on_s3_finished)
 
-        self._s3_worker.progress.connect(_update_download_progress)
-        self._s3_worker.file_complete.connect(
-            lambda uri, path: self._video_paths.update({uri: path})
-        )
-        self._s3_worker.error.connect(
-            lambda uri, msg: logger.error(
-                "S3 download failed: %s — %s", uri, msg
-            )
-        )
-
-        def on_finished(success, failed):
-            # Defer all UI work to the next event loop iteration.
-            # Calling close() on QProgressDialog from within a
-            # cross-thread signal handler can crash PySide6.
-            print("[DEBUG] S3 download thread finished:", success, failed)
-            def _deferred():
-                print("[DEBUG] deferred: start")
-                try:
-                    progress_dialog.close()
-                    print("[DEBUG] deferred: dialog closed")
-                except Exception as e:
-                    print(f"[DEBUG] deferred: close failed: {e}")
-
-                try:
-                    self._s3_thread.quit()
-                    print("[DEBUG] deferred: thread quit")
-                except Exception as e:
-                    print(f"[DEBUG] deferred: quit failed: {e}")
-
-                if failed > 0:
-                    print("[DEBUG] deferred: showing warning")
-                    QMessageBox.warning(
-                        self, "Download Incomplete",
-                        f"{failed} video(s) failed to download.\n"
-                        f"They will be greyed out in the video list.",
-                    )
-
-                print("[DEBUG] deferred: about to call on_complete")
-                if on_complete is not None:
-                    try:
-                        on_complete()
-                        print("[DEBUG] deferred: on_complete returned")
-                    except Exception as e:
-                        print(f"[DEBUG] deferred: on_complete failed: {e}")
-                        import traceback
-                        traceback.print_exc()
-
-                print("[DEBUG] deferred: done")
-
-            QTimer.singleShot(0, _deferred)
-
-        self._s3_worker.finished.connect(on_finished)
         progress_dialog.canceled.connect(self._s3_worker.cancel)
-        
-
 
         self._s3_thread.started.connect(
             lambda: self._s3_worker.start_download.emit(
@@ -1134,6 +1103,7 @@ class ValidationTab(QWidget):
             )
         )
         self._s3_thread.start()
+        
 
     def _ask_aws_profile(self) -> str | None:
         """
