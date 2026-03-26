@@ -72,30 +72,17 @@ class MainWindow(QMainWindow):
 
         file_menu.addSeparator()
 
-        # S3 actions
+        # Open S3 Video
         open_s3_video = QAction("Open Video from S&3...", self)
         open_s3_video.triggered.connect(self._on_open_s3_video)
         file_menu.addAction(open_s3_video)
 
+        # New S3 Session
         open_s3_session = QAction("New Session from S3...", self)
         open_s3_session.triggered.connect(self._on_open_s3_session)
         file_menu.addAction(open_s3_session)
 
         file_menu.addSeparator()
-
-        # Save session as
-        save_session_as = QAction("Save Session &As...", self)
-        save_session_as.setShortcut(QKeySequence("Ctrl+Shift+S"))
-        save_session_as.triggered.connect(
-            lambda: self._on_save_session(save_as=True)
-        )
-        file_menu.addAction(save_session_as)
-
-        # Save session
-        save_session = QAction("&Save Session...", self)
-        save_session.setShortcut(QKeySequence("Ctrl+S"))
-        save_session.triggered.connect(self._on_save_session)
-        file_menu.addAction(save_session)
 
         # Load session
         load_session = QAction("&Load Session...", self)
@@ -106,6 +93,24 @@ class MainWindow(QMainWindow):
         # Recent sessions
         self._recent_menu = file_menu.addMenu("&Recent Sessions")
         self._rebuild_recent_menu()
+
+        file_menu.addSeparator()
+
+        # Save session
+        save_session = QAction("&Save Session...", self)
+        save_session.setShortcut(QKeySequence("Ctrl+S"))
+        save_session.triggered.connect(self._on_save_session)
+        file_menu.addAction(save_session)
+
+        # Save session as
+        save_session_as = QAction("Save Session &As...", self)
+        save_session_as.setShortcut(QKeySequence("Ctrl+Shift+S"))
+        save_session_as.triggered.connect(
+            lambda: self._on_save_session(save_as=True)
+        )
+        file_menu.addAction(save_session_as)
+
+        file_menu.addSeparator()
 
         # Export reviewed detections
         export_action = QAction("&Export Validated Detections...", self)
@@ -159,8 +164,44 @@ class MainWindow(QMainWindow):
 
     
     # --- OPEN VIDEO/SESSION HANDLERS ---
+    def _unsaved_changes_warning(self) -> bool:
+        """
+        Check for unsaved changes when opening a new video/session.
+
+        Returns:
+            True if it's safe to proceed (no unsaved changes or user chose to
+            discard/save), False if the user cancelled.
+        """
+        tab = self._validation_tab
+        if tab is not None and tab._has_unsaved_changes:
+            reply = QMessageBox.question(
+                self,
+                "Unsaved Changes",
+                "You have unsaved review progress.\n\n"
+                "Do you want to save before opening a new session?",
+                (
+                    QMessageBox.StandardButton.Save
+                    | QMessageBox.StandardButton.Discard
+                    | QMessageBox.StandardButton.Cancel
+                ),
+                QMessageBox.StandardButton.Save,
+            )
+
+            if reply == QMessageBox.StandardButton.Save:
+                self._on_save_session()
+                if tab._has_unsaved_changes:
+                    return False  # Save was cancelled or failed
+            elif reply == QMessageBox.StandardButton.Cancel:
+                return False
+
+        return True  # No unsaved changes, or user saved/discarded
+
     def _on_open_video(self) -> None:
         """Show file dialog and open th selected video."""
+        # Check for any unsaved changes
+        if not self._unsaved_changes_warning():
+            return
+
         filepath, _ = QFileDialog.getOpenFileName(
             self,
             "Open Video",
@@ -170,9 +211,14 @@ class MainWindow(QMainWindow):
         if filepath:
             self._validation_tab.open_video(filepath)
             self.statusBar().showMessage(f"Opened: {filepath}")
+            self.update_title()
 
     def _on_open_session(self) -> None:
         """Show dialogs to open a detection CSV and video directory."""
+        # Check for any unsaved changes
+        if not self._unsaved_changes_warning():
+            return
+        
         # Step 1: Pick the CSV file
         csv_path, _ = QFileDialog.getOpenFileName(
             self,
@@ -247,10 +293,13 @@ class MainWindow(QMainWindow):
 
         local_path = self._s3_download_to_cache(video_uri, profile)
         if local_path is None:
+            self.statusBar().showMessage("S3 video download failed")
             return
         
         self._validation_tab.open_video(local_path)
         self.statusBar().showMessage(f"Opened S3 video: {video_uri}")
+
+
 
     def _on_open_s3_session(self) -> None:
         """Open a detection session from S3 (CSV + video directory)."""
@@ -271,6 +320,7 @@ class MainWindow(QMainWindow):
         # Download the CSV to local cache to open_session can parse it
         local_csv = self._s3_download_to_cache(csv_uri, profile)
         if local_csv is None:
+            self.statusBar().showMessage("S3 CSV download failed")
             return
         
         # video_prefix is an S3 URI like "s3://bucket/videos/" —
@@ -408,8 +458,8 @@ class MainWindow(QMainWindow):
                 f"Failed to save session:\n\n{e}",
             ) 
         
-        self._add_recent_session(path)
         self.update_title()
+        self._add_recent_session(path)
 
     def _load_session_from_path(self, path: str) -> None:
         """Load a previously saved session from a specific path."""
@@ -449,7 +499,17 @@ class MainWindow(QMainWindow):
 
         # Open the session from the CSV and video directory
         tab = self._validation_tab
+        tab._aws_profile = session_data.get("aws_profile")
+
+        loaded_cache_dir = session_data.get("cache_dir")
+        if loaded_cache_dir and Path(loaded_cache_dir).is_dir():
+            tab._cache_dir = Path(loaded_cache_dir)
+        else:
+            tab._cache_dir = None
+
         tab.open_session(csv_path, video_dir)
+
+        tab._session_save_path = Path(path)
 
         # Apply saved state
         if tab._validation_model is not None:
@@ -470,14 +530,8 @@ class MainWindow(QMainWindow):
                 progress = tab._validation_model.get_progress(sf)
                 tab._video_list.update_progress(sf, progress)
 
-            tab._session_save_path = Path(path)
             tab._has_unsaved_changes = False
-            tab._aws_profile = session_data.get("aws_profile")
-            loaded_cache_dir = session_data.get("cache_dir")
-            if loaded_cache_dir and Path(loaded_cache_dir).is_dir():
-                tab._cache_dir = Path(loaded_cache_dir)
-            else:
-                tab._cache_dir = None
+            self.update_title()
 
             msg = (
                 f"Session loaded: {stats['applied']} review actions restored."
@@ -488,8 +542,7 @@ class MainWindow(QMainWindow):
                 msg += f" ({stats['skipped']} skipped — CSV may have changed)"
             self.statusBar().showMessage(msg)
 
-        self.update_title()
-        self._add_recent_session(path)
+            self._add_recent_session(path)
 
     def _on_load_session(self) -> None:
         """Load a previously saved session."""
@@ -642,8 +695,36 @@ class MainWindow(QMainWindow):
                 return
 
             if lower.endswith(".csv"):
-                # Trigger the open session flow with this CSV
-                self._on_open_session(csv_path=path)
+                # Trigger the session flow — need to ask for video dir
+                from seavision.engine.visualiser import CSVDetectionLoader
+
+                try:
+                    loader = CSVDetectionLoader(path)
+                except (FileNotFoundError, ValueError) as e:
+                    QMessageBox.warning(
+                        self, "CSV Error",
+                        f"Failed to read detection CSV:\n\n{e}",
+                    )
+                    return
+
+                # Check if we need a video directory
+                local_sources = [
+                    s for s in loader.sources_in_file
+                    if not s.startswith("s3://")
+                ]
+
+                video_dir = ""
+                if local_sources:
+                    video_dir = QFileDialog.getExistingDirectory(
+                        self,
+                        "Select Video Directory",
+                        str(Path.home()),
+                    )
+                    if not video_dir:
+                        return
+
+                self._validation_tab.open_session(path, video_dir)
+                self._update_session_status()
                 return
 
             if lower.endswith((".ts", ".mp4", ".avi", ".mkv")):
@@ -747,7 +828,7 @@ class MainWindow(QMainWindow):
 
         for path in recent:
             action = QAction(Path(path).name, self)
-            action.setToolTip(path)
+            action.setToolTip(str(path))
             action.setData(path)
             action.triggered.connect(self._on_open_recent)
             self._recent_menu.addAction(action)

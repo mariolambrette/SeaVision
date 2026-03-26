@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 _COLOUR_NOT_STARTED = QColor(150, 150, 150) # GREY
-_COLOUR_IN_PROGRESS = QColor(220, 160, 40)  # AMBER/ORANGE
+_COLOUR_IN_PROGRESS = QColor("#CC7A00")  # AMBER/ORANGE
 _COLOUR_COMPLETE = QColor(60, 160, 60)      # GREEN
 _COLOUR_UNAVAILABLE = QColor(180, 180, 180)  # LIGHT GREY for videos that can't be loaded (e.g. missing S3 creds)
 

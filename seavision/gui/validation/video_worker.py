@@ -61,7 +61,7 @@ class VideoDecoderWorker(QObject):
         self._highlight_detection: Detection | None = None
 
         # Playback speed multiplier
-        self._playback_speed: float = 1.0
+        self._speed_multiplier: float = 1.0
 
 
     # --- PLAYBACK SLOT & METHODS ---
@@ -273,6 +273,13 @@ class VideoDecoderWorker(QObject):
                         self._draw_highlight(frame, det)
                         highlighted = True
                         break
+                
+                # If the detection wasn't in the filtered list (e.g. rejected/
+                # skipped with "show rejected off"), draw it anyway
+                if not highlighted:
+                    self._draw_detection_box(frame, hl, colour=(128, 128, 128))
+                    self._draw_highlight(frame, hl)
+                    highlighted = True
 
             # If not on the exact frame, follow by track_id
             if not highlighted and hl.track_id is not None:

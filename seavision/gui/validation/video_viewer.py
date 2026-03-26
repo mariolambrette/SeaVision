@@ -38,7 +38,7 @@ class FrameDisplay(QLabel):
             "Open a video or session to begin\n\n"
             "File → New Session (Ctrl+N)\n"
             "File → Open Video (Ctrl+O)\n\n"
-            "Or drag a CSV or video file here"
+            "Or drag a CSV, video or .seavision-session file here"
         )
 
         # Placeholder for the unscaled original frame

@@ -3,7 +3,7 @@ Style sheet strings for validation GUI buttons.
 """
 
 # --- Main review action buttons ---
-_BUTTON_STYLLE_CONFIRM = """
+_BUTTON_STYLE_CONFIRM = """
     QPushButton {
         background-color: #2d7a4d;
         color: white;
@@ -111,8 +111,34 @@ class ReviewButtonStyles:
     """Predefined styles for the main review action buttons."""
 
     def __init__(self):
-        self.confirm = _BUTTON_STYLLE_CONFIRM
+        self.confirm = _BUTTON_STYLE_CONFIRM
         self.reject = _BUTTON_STYLE_REJECT
         self.skip = _BUTTON_STYLE_SKIP
         self.add = _BUTTON_STYLE_ADD
 
+
+# --- Transport bar buttons ---
+_BUTTON_STYLE_TRANSPORT = """
+    QPushButton {
+        padding: 4px 8px;
+        border: 1px solid #555;
+        border-radius: 3px;
+        background-color: #3a3a3a;
+        color: #ddd;
+        font-weight: bold;
+    }
+    QPushButton:hover { background-color: #4a4a4a; }
+    QPushButton:pressed { background-color: #2a2a2a; }
+    QPushButton:disabled {
+        background-color: #2a2a2a;
+        color: #555;
+        border-color: #333;
+    }
+"""
+
+
+class TransportButtonStyles:
+    """Predefined style for transport bar buttons."""
+
+    def __init__(self):
+        self.transport = _BUTTON_STYLE_TRANSPORT

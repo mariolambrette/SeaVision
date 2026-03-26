@@ -88,11 +88,14 @@ class S3VideoCache:
             )
         
         self._ensure_cache_dir()
-        local_path = Path(self.get_cached_path(s3_uri))
+        cached = self.get_cached_path(s3_uri)
 
-        if local_path is not None and local_path.exists():
+        if cached is not None:
             logger.debug("Cache hit for %s", s3_uri)
-            return local_path
+            return Path(cached)
+        
+        # Not cached - need to download
+        local_path = self.cache_dir / self._cache_key(s3_uri)
         
         logger.info("Downloading %s to cache...", s3_uri)
         bucket, key = parse_s3_uri(s3_uri)

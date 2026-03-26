@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 from seavision.engine.source.base import VideoMetadata
+from seavision.gui.validation.button_styles import TransportButtonStyles
 
 
 class TransportBar(QWidget):
@@ -43,24 +44,29 @@ class TransportBar(QWidget):
         layout.setContentsMargins(4, 2, 4, 2)
 
         # --- Buttons ---
-        self._prev_det_btn = QPushButton("⏪")
+        self._prev_det_btn = QPushButton("⟪")
         self._prev_det_btn.setToolTip("Previous detection (Ctrl+Left)")
-        self._prev_det_btn.setFixedWidth(30)
+        self._prev_det_btn.setFixedWidth(36)
+        self._prev_det_btn.setStyleSheet(TransportButtonStyles().transport)
 
-        self._prev_btn = QPushButton("⏮")
+        self._prev_btn = QPushButton("|◀")
         self._prev_btn.setToolTip("Previous frame (Left)")
-        self._prev_btn.setFixedWidth(30)
+        self._prev_btn.setFixedWidth(36)
+        self._prev_btn.setStyleSheet(TransportButtonStyles().transport)
 
-        self._play_btn = QPushButton("▶/⏸")
-        self._play_btn.setFixedWidth(60)
-
-        self._next_btn = QPushButton("⏭")
+        self._play_btn = QPushButton("▶")
+        self._play_btn.setFixedWidth(50)
+        self._play_btn.setStyleSheet(TransportButtonStyles().transport)
+       
+        self._next_btn = QPushButton("▶|")
         self._next_btn.setToolTip("Next frame (Right)")
-        self._next_btn.setFixedWidth(30)
+        self._next_btn.setFixedWidth(36)
+        self._next_btn.setStyleSheet(TransportButtonStyles().transport)
 
-        self._next_det_btn = QPushButton("⏩")
+        self._next_det_btn = QPushButton("⟫")
         self._next_det_btn.setToolTip("Next detection (Ctrl+Right)")
-        self._next_det_btn.setFixedWidth(30)
+        self._next_det_btn.setFixedWidth(36)
+        self._next_det_btn.setStyleSheet(TransportButtonStyles().transport)
 
         # --- Seek slider ---
         self._slider = QSlider(Qt.Orientation.Horizontal)

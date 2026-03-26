@@ -13,6 +13,7 @@ from PySide6.QtCore import (
     QSettings,
     Qt, 
     Signal,
+    Slot,
 )
 from PySide6.QtWidgets import (
     QApplication,
@@ -97,15 +98,27 @@ class _S3DownloadWorker(QObject):
     # Emitted on each failure: (s3_uri, error_message)
     error = Signal(str, str)
 
+    # Trigger download - emitted from main thread
+    start_download = Signal(list, str) # List of S3 URIs, AWS profile name
+
     def __init__(self, cache, parent=None):
         super().__init__(parent)
-        self._cache = cache
+        self._cache: S3VideoCache = cache
         self._cancelled = False
+        self.start_download.connect(self._do_download)
 
     def cancel(self):
         """Request cancellation of remaining downloads."""
         self._cancelled = True
 
+    @Slot(list, str)
+    def _do_download(self, s3_uris: list[str], profile_name: str) -> None:
+        """Run download logic on the worker thread."""
+        self.download_batch(
+            s3_uris,
+            profile_name=profile_name if profile_name else None,
+        )
+        
     def download_batch(
         self,
         s3_uris: list[str],
@@ -122,23 +135,28 @@ class _S3DownloadWorker(QObject):
         success = 0
         failed = 0
 
-        for i, uri in enumerate(s3_uris):
-            if self._cancelled:
-                break
+        try:
+            for i, uri in enumerate(s3_uris):
+                if self._cancelled:
+                    break
 
-            try:
-                local_path = self._cache.get_or_download(
-                    uri, profile_name=profile_name,
-                )
-                self.file_complete.emit(uri, str(local_path))
-                success += 1
+                try:
+                    local_path = self._cache.get_or_download(
+                        uri, profile_name=profile_name,
+                    )
+                    self.file_complete.emit(uri, str(local_path))
+                    success += 1
 
-            except Exception as e:
-                self.error.emit(uri, str(e))
-                failed += 1
+                except Exception as e:
+                    self.error.emit(uri, str(e))
+                    failed += 1
 
-            # Report progress after each file (success or failure)
-            self.progress.emit(i + 1, total)
+                self.progress.emit(i + 1, total)
+
+        except Exception as e:
+            # Catch-all for anything that escapes the per-file handler
+            logger.error("S3 download batch failed: %s", e, exc_info=True)
+            self.error.emit("batch", str(e))
 
         self.finished.emit(success, failed)
 
@@ -172,7 +190,7 @@ class _StatusFilteredDetectionSource:
     ) -> None:
         self._model = model
         self._source_file = source_file
-        self._show_rejected = False,
+        self._show_rejected = False
         self._show_all = True # When False hide all overlays
 
     @property
@@ -635,10 +653,13 @@ class ValidationTab(QWidget):
         complete for S3 sessions. The ValidationModel and its signal
         connections are already set up by open_session.
         """
+        print("[DEBUG] _finish_session_setup entered")
         resolved = self._video_paths
+        print(f"[DEBUG] resolved videos: {list(resolved.keys())}")
 
         # --- Check we found at least one video ---
         if not resolved:
+            print("[DEBUG] no resolved videos")
             local_expected = [
                 Path(s).name for s in loader.sources_in_file
                 if not s.startswith("s3://")
@@ -663,6 +684,8 @@ class ValidationTab(QWidget):
 
             QMessageBox.warning(self, "No Videos Found", message)
             return
+        
+        print("[DEBUG] Populating video list")
 
         # --- Populate video list sidebar ---
         video_info = []
@@ -676,14 +699,20 @@ class ValidationTab(QWidget):
             })
         self._video_list.set_videos(video_info)
 
+        print("[DEBUG] video list populated")
+
         # --- Open the first available video ---
         first_source = next(
             (s for s in loader.sources_in_file if s in resolved),
             None,
         )
+        print(f"[DEBUG] first_source: {first_source}")
         if first_source is not None:
+            print("[DEBUG] calling _open_video_for_source")
             self._open_video_for_source(first_source)
+            print("[DEBUG] _open_video_for_source returned")
 
+        print("[DEBUG] _finish_session_setup complete")
         logger.info(
             "Session setup complete: %d videos available",
             len(resolved),
@@ -691,13 +720,16 @@ class ValidationTab(QWidget):
 
     def _on_s3_downloads_complete(self) -> None:
         """Called when background S3 downloads finish."""
+        print("[DEBUG] _on_s3_downloads_complete entered")
         loader = self._pending_loader
         csv_path = self._pending_csv_path
         self._pending_loader = None
         self._pending_csv_path = None
 
         # Finish setup — video list, open first video
+        print(f"[DEBUG] calling _finish_session_setup with {csv_path}")
         self._finish_session_setup(csv_path, loader)
+        print("[DEBUG] _finish_session_setup returned")
 
     def _open_video_for_source(self, source_name: str) -> None:
         """
@@ -709,11 +741,14 @@ class ValidationTab(QWidget):
         Args:
             source_name: The source_file value from the CSV.
         """
+        print(f"[DEBUG] _open_video_for_source: {source_name}")
         # CLear existing status messages
         self._clear_status()
         
         local_path = self._video_paths.get(source_name)
+        print(f"[DEBUG] local_path: {local_path}")
         if local_path is None:
+            print("[DEBUG] no local path — returning")
             logger.error(
                 "No local path for source: %s", 
                 source_name
@@ -721,15 +756,18 @@ class ValidationTab(QWidget):
             return
 
         self._active_source_file = source_name
+        print("[DEBUG] creating detection adapter")
 
         # --- Send status-aware detection source to the worker ---
         self._active_detection_adapter = _StatusFilteredDetectionSource(
             self._validation_model,
             source_name,
         )
+        print("[DEBUG] emitting detection source")
         self._set_detection_source.emit(self._active_detection_adapter)
 
         # --- Populate the detection table from the ValidationModel ---
+        print("[DEBUG] populating table")
         validated_dets = self._validation_model.get_detections_for_video(
             source_name
         ) 
@@ -738,6 +776,7 @@ class ValidationTab(QWidget):
 
         has_detections = len(validated_dets) > 0
         self._transport.set_detection_nav_enabled(has_detections)
+        self._add_btn.setEnabled(self._validation_model is not None)
 
         # --- Clear selection state ---
         self._detail_panel.clear()
@@ -745,15 +784,20 @@ class ValidationTab(QWidget):
         self._set_highlight.emit(None)
 
         # --- Open video
+        print("[DEBUG] about to call _should_preload")
         preload = self._should_preload(local_path)
+        print(f"[DEBUG] preload decision: {preload}")
+        print("[DEBUG] emitting _request_open")
         self._request_open.emit(local_path, preload)
         self._video_is_preloaded = preload
+
+        print(f"[DEBUG] _open_video_for_source complete — {len(validated_dets)} detections")
 
         logger.info(
             "Opened source '%s' (%s) — %d detection frames",
             source_name,
             local_path,
-            len(self._active_detection_adapter.get_frame_numbers_with_detections()),
+            len(validated_dets),
         )
 
     def _on_video_selected(self, source_file: str) -> None:
@@ -767,7 +811,13 @@ class ValidationTab(QWidget):
             return # Already viewing this video
         
         if source_file not in self._video_paths:
-            self._show_status(f"Video not available: {source_file}")
+            QMessageBox.warning(
+                self,
+                "Video Not Available",
+                f"The video file could not be found:\n\n"
+                f"  {source_file}\n\n"
+                f"It may have been moved or deleted.",
+            )
             return
 
         self._open_video_for_source(source_file)
@@ -1008,6 +1058,10 @@ class ValidationTab(QWidget):
         progress_dialog.setWindowTitle("S3 Download")
         progress_dialog.setMinimumDuration(0)
 
+        # Prevent automatic shutdown
+        progress_dialog.setAutoClose(False)
+        progress_dialog.setAutoReset(False)
+
         self._s3_thread = QThread()
         self._s3_worker = _S3DownloadWorker(cache)
         self._s3_worker.moveToThread(self._s3_thread)
@@ -1029,23 +1083,54 @@ class ValidationTab(QWidget):
         )
 
         def on_finished(success, failed):
-            progress_dialog.close()
-            self._s3_thread.quit()
-            if failed > 0:
-                QMessageBox.warning(
-                    self, "Download Incomplete",
-                    f"{failed} video(s) failed to download.\n"
-                    f"They will be greyed out in the video list.",
-                )
-            if on_complete is not None:
-                on_complete()
+            # Defer all UI work to the next event loop iteration.
+            # Calling close() on QProgressDialog from within a
+            # cross-thread signal handler can crash PySide6.
+            print("[DEBUG] S3 download thread finished:", success, failed)
+            def _deferred():
+                print("[DEBUG] deferred: start")
+                try:
+                    progress_dialog.close()
+                    print("[DEBUG] deferred: dialog closed")
+                except Exception as e:
+                    print(f"[DEBUG] deferred: close failed: {e}")
+
+                try:
+                    self._s3_thread.quit()
+                    print("[DEBUG] deferred: thread quit")
+                except Exception as e:
+                    print(f"[DEBUG] deferred: quit failed: {e}")
+
+                if failed > 0:
+                    print("[DEBUG] deferred: showing warning")
+                    QMessageBox.warning(
+                        self, "Download Incomplete",
+                        f"{failed} video(s) failed to download.\n"
+                        f"They will be greyed out in the video list.",
+                    )
+
+                print("[DEBUG] deferred: about to call on_complete")
+                if on_complete is not None:
+                    try:
+                        on_complete()
+                        print("[DEBUG] deferred: on_complete returned")
+                    except Exception as e:
+                        print(f"[DEBUG] deferred: on_complete failed: {e}")
+                        import traceback
+                        traceback.print_exc()
+
+                print("[DEBUG] deferred: done")
+
+            QTimer.singleShot(0, _deferred)
 
         self._s3_worker.finished.connect(on_finished)
         progress_dialog.canceled.connect(self._s3_worker.cancel)
+        
+
 
         self._s3_thread.started.connect(
-            lambda: self._s3_worker.download_batch(
-                need_download, profile_name=profile_name
+            lambda: self._s3_worker.start_download.emit(
+                need_download, profile_name or ""
             )
         )
         self._s3_thread.start()
@@ -1342,8 +1427,9 @@ class ValidationTab(QWidget):
         User is dragging the slider — update the display.
 
         For pre-loaded videos, send the frame request immediately
-        (array lookup is O(1)). For non-preloaded videos, debounce
-        to avoid overwhelming cv2.VideoCapture with rapid seeks.
+        (array lookup is O(1)). For non-preloaded videos, only update the
+        transport bar labels - the actual seek happens on release via 
+        _on_seek_committed.
         """
         if self._is_playing:
             self._request_stop.emit()
@@ -1354,10 +1440,13 @@ class ValidationTab(QWidget):
             # Instant response for pre-loaded videos
             self._request_frame.emit(frame_number)
         else:
-            # Debounce for disk-based seeking
-            self._pending_seek = frame_number
-            if not self._seek_timer.isActive():
-                self._seek_timer.start()
+            # For non-preloaded: just update the position labels.
+            # The actual frame seek happens on slider release
+            if self._metadata and self._metadata.fps > 0:
+                timestamp = frame_number / self._metadata.fps
+            else:
+                timestamp = 0.0
+            self._transport.update_position(frame_number, timestamp)
 
     def _on_seek_committed(self, frame_number: int) -> None:
         """User released the slider - jump directly to the final frame."""

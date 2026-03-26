@@ -25,6 +25,7 @@ from pathlib import PurePosixPath
  
 from PySide6.QtCore import Qt, Signal, QThread, QObject, Slot
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QDialog,
     QGroupBox,
@@ -64,8 +65,14 @@ class _S3ListWorker(QObject):
     listing_ready with the results, or error_occurred on failure.
     """
 
+    request_listing = Signal(str, str, str)  # bucket, prefix, profile
     listing_ready = Signal(str, list)  # prefix, items
     error_occurred = Signal(str)       # error message
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._cancelled = False
+        self.request_listing.connect(self.list_prefix)
 
     @Slot(str, str, str)
     def list_prefix(
@@ -80,6 +87,9 @@ class _S3ListWorker(QObject):
             display     — short display name (e.g. "clip_001.ts")
             size        — file size in bytes (files only)
         """
+        if self._cancelled:
+            return
+        
         try:
             import boto3
 
@@ -120,6 +130,10 @@ class _S3ListWorker(QObject):
 
         except Exception as e:
             self.error_occurred.emit(str(e))
+
+    def cancel(self) -> None:
+        """Cancel the current listing operation."""
+        self._cancelled = True
 
 
 # --- Dialog ---
@@ -355,6 +369,7 @@ class S3BrowserDialog(QDialog):
         self._current_prefix = ""
         self._connect_btn.setEnabled(False)
         self._connect_btn.setText("Connecting…")
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         self._refresh_listing()
 
 
@@ -367,7 +382,7 @@ class S3BrowserDialog(QDialog):
         loading.setFlags(Qt.ItemFlag.NoItemFlags)
         self._tree.addTopLevelItem(loading)
  
-        self._worker.list_prefix(
+        self._worker.request_listing.emit(
             self._current_bucket,
             self._current_prefix,
             self._profile_combo.currentText(),
@@ -375,6 +390,8 @@ class S3BrowserDialog(QDialog):
 
     def _on_listing_ready(self, prefix: str, items: list) -> None:
         """Populate the tree with S3 listing results."""
+        QApplication.restoreOverrideCursor()
+        
         # Ignore stale responses from a previous navigation
         if prefix != self._current_prefix:
             return
@@ -444,6 +461,7 @@ class S3BrowserDialog(QDialog):
         data = item.data(0, Qt.ItemDataRole.UserRole)
         if data and data["is_prefix"]:
             self._current_prefix = data["key"]
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             self._refresh_listing()
 
     def _on_navigate_up(self) -> None:
@@ -612,8 +630,16 @@ class S3BrowserDialog(QDialog):
             size_bytes /= 1024
         return f"{size_bytes:.1f} TB"
 
-    def closeEvent(self, event) -> None:
-        """Shut down the background thread on close."""
+    def done(self, result) -> None:
+        """Shut down the background thread when the dialog closes."""
+        self._worker.cancel()
         self._thread.quit()
-        self._thread.wait()
+       # self._thread.wait(2000)
+        super().done(result)
+
+    def closeEvent(self, event) -> None:
+        """Also handle the X button."""
+        if self._thread.isRunning():
+            self._thread.quit()
+            self._thread.wait()
         super().closeEvent(event)
