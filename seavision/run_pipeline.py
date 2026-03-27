@@ -9,15 +9,15 @@ from typing import Optional
 
 import yaml
 
-from engine import discover_local_videos, discover_s3_videos
-from pipeline import(
+from .engine import discover_local_videos, discover_s3_videos
+from .pipeline import (
     DetectionPipeline,
     PipelineConfig,
     InputConfig,
     DetectorConfig,
     setup_logging,
 )
-from engine import CSVWriterConfig, OutputMode
+from .engine import CSVWriterConfig, OutputMode
 
 
 def parse_args() -> argparse.Namespace:

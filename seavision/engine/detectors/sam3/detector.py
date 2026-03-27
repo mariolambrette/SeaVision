@@ -23,8 +23,8 @@ from typing import Dict, Iterator, List, Optional, Tuple
 import numpy as np
 import torch
 
-from engine.source.base import FrameContext
-from engine.detectors.base import Detection, DetectorBase
+from ...source.base import FrameContext
+from ..base import Detection, DetectorBase
 from .config import (
     SAM3DetectorConfig,
     PromptConfig,
@@ -338,7 +338,7 @@ class SAM3Detector(DetectorBase):
 
         # Built in detector types
         if detector_type == "motion":
-            from engine.detectors.motion import MotionDetector, MotionDetectorConfig
+            from ..motion import MotionDetector, MotionDetectorConfig
             
             # Parse config
             motion_cfg = MotionDetectorConfig(
@@ -370,13 +370,13 @@ class SAM3Detector(DetectorBase):
         
         # TODO: YOLO detector
         # elif detector_type == "yolo":
-        #     from engine.detectors.yolo import YOLODetector, YOLODetectorConfig
+        #     from ..detectors.yolo import YOLODetector, YOLODetectorConfig
         #     ...  
 
         # Try to get from pipeline registry
         else:
             try:
-                from pipeline import DETECTOR_REGISTRY
+                from ....pipeline import DETECTOR_REGISTRY
                 if detector_type in DETECTOR_REGISTRY:
                     det_class, config_parser = DETECTOR_REGISTRY[detector_type]
                     det_config = config_parser(prompter_cfg.detector_config)

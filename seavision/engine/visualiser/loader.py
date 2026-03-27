@@ -7,7 +7,7 @@ from typing import Dict, Iterator, List, Optional
 import csv
 import logging
 
-from engine.detectors.base import Detection
+from ..detectors.base import Detection
 
 logger = logging.getLogger(__name__)
 
@@ -174,10 +174,12 @@ class CSVDetectionLoader(DetectionSource):
         "xc",
         "yc",
         "width",
-        "height"
+        "height",
     }
     OPTIONAL_COLUMNS = {
-        "confidence"
+        "confidence",
+        "label",
+        "track_id",
     }
 
 
@@ -218,7 +220,7 @@ class CSVDetectionLoader(DetectionSource):
 
         logger.debug(f"Loading detections from CSV: {self._csv_path}")
 
-        with open(self._csv_path, "r", newline="", encoding="utf-8") as f:
+        with open(self._csv_path, "r", newline="", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
 
             # Validate columns
@@ -307,7 +309,19 @@ class CSVDetectionLoader(DetectionSource):
             conf_str = row.get("confidence", "").strip()
             if conf_str:
                 confidence = float(conf_str)
-        
+
+        # Parse label (may be empty string or missing)
+        label = None
+        label_str = row.get("label", "").strip()
+        if label_str:
+            label = label_str
+
+        # Parse the track ID (may be empty string or missing)
+        track_id = None
+        track_id_str = row.get("track_id", "").strip()
+        if track_id_str:
+            track_id = track_id_str
+
         return Detection(
             source_file=row["source_file"].strip(),
             timestamp=float(row["timestamp"].strip()),
@@ -317,6 +331,8 @@ class CSVDetectionLoader(DetectionSource):
             width=float(row["width"].strip()),
             height=float(row["height"].strip()),
             confidence=confidence,
+            label=label,
+            track_id=track_id
         )
 
     

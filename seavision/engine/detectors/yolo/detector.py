@@ -5,7 +5,7 @@ it can be used in the SeaVision detection pipeline as a pure, stateless
 detector (no built-in tracking or persistence filtering).
 
 Example:
-    from engine.detectors.yolo import YOLODetector, YOLODetectorConfig
+    from seavision.engine.detectors.yolo import YOLODetector, YOLODetectorConfig
 
     config = YOLODetectorConfig(
         model_path="./models/yolo11n.pt",
@@ -32,8 +32,8 @@ from typing import Iterator, Optional
 import numpy as np
 import ultralytics
 
-from engine.source import FrameContext
-from engine.detectors.base import Detection, DetectorBase
+from ...source import FrameContext
+from ..base import Detection, DetectorBase
 from .config import YOLODetectorConfig
 
 logger = logging.getLogger(__name__)

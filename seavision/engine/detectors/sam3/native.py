@@ -40,8 +40,8 @@ import numpy as np
 import torch
 from PIL import Image
 
-from engine.source import FrameContext
-from engine.detectors.base import Detection, DetectorBase
+from ...source import FrameContext
+from ..base import Detection, DetectorBase
 from .config import SAM3DetectorConfig, PromptConfig, PromptType
 
 logger = logging.getLogger(__name__)

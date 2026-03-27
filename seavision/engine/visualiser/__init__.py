@@ -1,6 +1,6 @@
 """Visualiser module for detection overlay on video."""
 
-from engine.visualiser.config import (
+from .config import (
     OutputMode,
     LabelPosition,
     BoundingBoxStyle,
@@ -9,14 +9,14 @@ from engine.visualiser.config import (
     VideoOutputConfig,
     VisualiserConfig
 )
-from engine.visualiser.annotator import FrameAnnotator
-from engine.visualiser.writer import (
+from .annotator import FrameAnnotator
+from .writer import (
     VideoWriterHandle,
     OutputNameFunction,
     extract_output_stem,
     sanitise_filename
 )
-from engine.visualiser.loader import (
+from .loader import (
     DetectionSource,
     FrameDetections,
     CSVDetectionLoader,
@@ -24,7 +24,7 @@ from engine.visualiser.loader import (
     ListDetectionSource,
     load_detections_from_csv,
 )
-from engine.visualiser.visualiser import (
+from .visualiser import (
     AnnotatedFrame,
     VisualisationResult,
     LiveVisualiser,

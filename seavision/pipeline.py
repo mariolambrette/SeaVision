@@ -8,7 +8,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
 from tqdm import tqdm
 
-from engine import (
+from .engine import (
     VideoSource,
     DetectionWriter,
     CSVWriterConfig,
@@ -17,17 +17,17 @@ from engine import (
     PostprocessStage,
     build_postprocess_stages,
 )
-from engine.detectors.motion import(
+from .engine.detectors.motion import (
     MotionDetectorConfig,
     MotionDetector,
     StabiliserConfig,
     BackgroundConfig
 )
-from engine.detectors.sam3 import(
+from .engine.detectors.sam3 import (
     SAM3DetectorConfig,
     SAM3Detector,
 )
-from engine.visualiser import VisualiserConfig, LiveVisualiser
+from .engine.visualiser import VisualiserConfig, LiveVisualiser
 
 # Module logger
 logger = logging.getLogger(__name__)
@@ -109,7 +109,7 @@ register_detector(
 
 def _parse_sam3_config(data: dict) -> "SAM3DetectorConfig":
     """Parse a dictionary into SAM3DetectorConfig."""
-    from engine.detectors.sam3 import (
+    from .engine.detectors.sam3 import (
         SAM3DetectorConfig,
         PromptConfig,
         PromptType,
@@ -174,7 +174,7 @@ def _parse_sam3_config(data: dict) -> "SAM3DetectorConfig":
 
 # Register SAM 3 detector (conditional on availability)
 try:
-    from engine.detectors.sam3 import SAM3Detector
+    from .engine.detectors.sam3 import SAM3Detector
     register_detector("sam3", SAM3Detector, _parse_sam3_config)
 except ImportError:
     logger.debug("SAM 3 detector not available (ultralytics not installed)")

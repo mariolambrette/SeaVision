@@ -7,8 +7,8 @@ import re
 import cv2
 import numpy as np
 
-from engine.source.base import VideoMetadata
-from engine.visualiser.config import VideoOutputConfig
+from ..source.base import VideoMetadata
+from .config import VideoOutputConfig
 
 
 # Type alias for custom naming functions

@@ -5,9 +5,9 @@ import cv2
 import numpy as np
 import logging
 
-from engine.detectors.base import Detection
-from engine.source.base import FrameContext
-from engine.visualiser.config import (
+from ..detectors.base import Detection
+from ..source.base import FrameContext
+from .config import (
     BoundingBoxStyle,
     LabelStyle,
     LabelPosition,

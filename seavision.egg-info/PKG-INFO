@@ -1,16 +1,18 @@
 Metadata-Version: 2.4
 Name: seavision
 Version: 0.1.0
-Summary: Buoy detection system pipeline (SeaVision)
-Author: M3B Team
+Summary: Human-in-the-loop Computer Vision for Marine Environments
+Author: Mario Lambrette
 License: Proprietary
-Keywords: computer-vision,detection,buoy
+Keywords: computer-vision,detection,marine,SAM3
 Classifier: Programming Language :: Python
 Classifier: Programming Language :: Python :: 3
-Requires-Python: >=3.9
+Requires-Python: >=3.10
 Description-Content-Type: text/markdown
 Provides-Extra: dev
 Requires-Dist: pytest; extra == "dev"
+Provides-Extra: gui
+Requires-Dist: PySide6<6.9,>=6.5; extra == "gui"
 
 # SeaVision
 
@@ -87,6 +89,12 @@ python run_pipeline.py --config config/default.yaml
 The SeaVision pipeline can be fully cosutomised using YAML config files. For
 a documented example of a config file see the
 [default configuration](./config/default.yaml)
+
+## Documentation
+
+- [Class and API reference](./docs/Class_reference.md)
+- [Architecture and class diagrams](./docs/Class_diagram.md)
+- [AWS setup guide](./docs/AWS_SETUP.md)
 
 ## Project Status
 

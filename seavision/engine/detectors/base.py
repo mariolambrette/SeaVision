@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Iterator, Optional
 import numpy as np
-from engine.source import FrameContext
+from ..source import FrameContext
 
 @dataclass
 class Detection:
