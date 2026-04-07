@@ -380,6 +380,13 @@ class DetectionTableView(QTableView):
         # Last column stretches to fill remaining space
         self.horizontalHeader().setStretchLastSection(True)
 
+        # Bold text for the selected row
+        self.setStyleSheet("""
+            QTableView::item:selected {
+                font-weight: bold;
+            }
+        """)
+
     def setModel(self, model: DetectionTableModel) -> None:
         """
         Set the model and connect selection handling.
@@ -485,6 +492,10 @@ class DetectionTableView(QTableView):
             remove = menu.addAction("Remove")
 
         menu.addSeparator()
+        change_label = menu.addAction("Change Label...")
+        rename_label = menu.addAction("Rename Label...")
+
+        menu.addSeparator()
         select = menu.addAction("Select")
 
         action = menu.exec(self.viewport().mapToGlobal(pos))
@@ -499,3 +510,7 @@ class DetectionTableView(QTableView):
             self.context_action.emit("remove", source_row)
         elif action == select:
             self.context_action.emit("select", source_row)
+        elif action == change_label:
+            self.context_action.emit("change_label", source_row)            
+        elif action == rename_label:
+            self.context_action.emit("rename_label", source_row)            

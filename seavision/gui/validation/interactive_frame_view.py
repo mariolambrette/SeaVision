@@ -8,7 +8,7 @@ update_frame etc.) and supports interactive bounding box editing.)
 import logging
 
 from PySide6.QtCore import Signal, Qt
-from PySide6.QtGui import QImage, QPainter
+from PySide6.QtGui import QImage, QPainter, QWheelEvent
 from PySide6.QtWidgets import (
     QGraphicsView,
     QSizePolicy,
@@ -49,12 +49,12 @@ class InteractiveFrameView(QGraphicsView):
         )
         self.setMinimumSize(320, 240)
 
-        # Disable scroll bars — we always fit the frame to the view
+        # Enable scroll bars when zoomed in
         self.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
         self.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
 
         # Smooth rendering
@@ -63,6 +63,17 @@ class InteractiveFrameView(QGraphicsView):
             | QPainter.RenderHint.Antialiasing
             | QPainter.RenderHint.SmoothPixmapTransform
         )
+
+        # Zoom configuration
+        self.setTransformationAnchor(
+            QGraphicsView.ViewportAnchor.AnchorUnderMouse
+        )
+        self.setResizeAnchor(
+            QGraphicsView.ViewportAnchor.AnchorViewCenter
+        )
+        self._zoom_factor = 1.0
+        self._min_zoom = 0.5
+        self._max_zoom = 20.0
 
         # Dark background
         self.setStyleSheet("background-color: #1e1e1e; border: none;")
@@ -89,7 +100,8 @@ class InteractiveFrameView(QGraphicsView):
         Display a new frame from the video worker.
         """
         self._scene.update_frame(image)
-        self._fit_frame()
+        if self._zoom_factor == 1.0:
+            self._fit_frame()
         self._frame_loaded = True
 
     def _fit_frame(self) -> None:
@@ -107,8 +119,9 @@ class InteractiveFrameView(QGraphicsView):
         self.fitInView(scene_rect, Qt.AspectRatioMode.KeepAspectRatio)
 
     def resizeEvent(self, event) -> None:
-        """Refit the frame when the widget is resized."""
-        self._fit_frame()
+        """Re-fit the frame when the widget is resized."""
+        if self._zoom_factor == 1.0:
+            self._fit_frame()
         super().resizeEvent(event)
 
     def set_add_mode(self, enabled: bool) -> None:
@@ -123,6 +136,33 @@ class InteractiveFrameView(QGraphicsView):
             self.setCursor(Qt.CursorShape.CrossCursor)
         else:
             self.setCursor(Qt.CursorShape.ArrowCursor)
+
+    def wheelEvent(self, event: QWheelEvent) -> None:
+        """
+        Zoom in/out with the scroll wheel.
+
+        Zooms towards the cursor position. The zoom factor is clamped to prevent
+        excessive zoom in either direction.
+        """
+        zoom_in_factor = 1.15
+        zoom_out_factor = 1.0 / zoom_in_factor
+
+        if event.angleDelta().y() > 0:
+            factor = zoom_in_factor
+        else:
+            factor = zoom_out_factor
+
+        new_zoom = self._zoom_factor * factor
+        if new_zoom < self._min_zoom or new_zoom > self._max_zoom:
+            return
+
+        self._zoom_factor = new_zoom
+        self.scale(factor, factor)
+
+    def reset_zoom(self) -> None:
+        """Reset zoom to fit the entire frame in the view."""
+        self._zoom_factor = 1.0
+        self._fit_frame()
 
     @property
     def frame_width(self) -> int:

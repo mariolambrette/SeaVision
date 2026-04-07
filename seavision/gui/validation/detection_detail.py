@@ -28,6 +28,12 @@ class DetectionDetailPanel(QWidget):
         """Create the label-value pairs."""
         layout = QFormLayout(self)
 
+        self._status_value = QLabel()
+        self._status_value.setStyleSheet(
+            "font-size: 14px; font-weight: bold; padding: 4px 0;"
+        )
+        layout.addRow("Status:", self._status_value)
+        
         self._frame_value = QLabel()
         layout.addRow("Frame:", self._frame_value)
 
@@ -54,9 +60,6 @@ class DetectionDetailPanel(QWidget):
 
         self._area_value = QLabel()
         layout.addRow("Area:", self._area_value)
-
-        self._status_value = QLabel()
-        layout.addRow("Status:", self._status_value)
 
     def set_detection(
         self, vd: ValidatedDetection, fps: float | None = None
@@ -128,16 +131,19 @@ class DetectionDetailPanel(QWidget):
         area = w * h
         self._area_value.setText(f"{area:.0f} px²")
 
-        # Status
-        status_labels = {
-            ValidationStatus.PENDING: "Pending",
-            ValidationStatus.CONFIRMED: "Confirmed",
-            ValidationStatus.REJECTED: "Rejected",
-            ValidationStatus.SKIPPED: "Skipped",
-            ValidationStatus.CORRECTED: "Corrected",
+        # Status — prominent display with colour coding
+        status_config = {
+            ValidationStatus.PENDING:   ("Pending",   "#cc8800"),
+            ValidationStatus.CONFIRMED: ("Confirmed", "#2d8a4e"),
+            ValidationStatus.REJECTED:  ("Rejected",  "#c0392b"),
+            ValidationStatus.SKIPPED:   ("Skipped",   "#888888"),
+            ValidationStatus.CORRECTED: ("Corrected", "#2d6da8"),
         }
-        self._status_value.setText(
-            status_labels.get(vd.status, "Unknown")
+        label, colour = status_config.get(vd.status, ("Unknown", "#000000"))
+        self._status_value.setText(label)
+        self._status_value.setStyleSheet(
+            f"font-size: 14px; font-weight: bold; padding: 4px 0; "
+            f"color: {colour};"
         )
 
     def clear(self) -> None:

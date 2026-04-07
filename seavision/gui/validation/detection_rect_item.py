@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # Size of the resize handles in scene pixels. This is intentionally large - on a
 # 640x480 display displayed at 2x, each handle is about 8 physical pixels, which
 # is comformtable to grab with a mouse.
-_HANDLE_SIZE = 4.0
+_HANDLE_SIZE = 3.0
 
 # Minimum size of the box in frame pixels. Prevents the box from collapsing to zero or inverting
 MIN_SIZE = 3.0
@@ -114,9 +114,11 @@ class DetectionRectItem(QGraphicsRectItem):
 
         # --- Visual style ---
         # COnvert BGR (OpenCV format) to RGB (Qt format)
-        r, g, b = colour
+        b, g, r = colour
         pen_colour = QColor(r, g, b)
-        self.setPen(QPen(pen_colour, 2.0))
+        pen = QPen(pen_colour, 2.0)
+        pen.setCosmetic(True)
+        self.setPen(pen)
         self.setBrush(QBrush(Qt.BrushStyle.NoBrush))
 
         self._default_pen_colour = pen_colour
@@ -145,6 +147,31 @@ class DetectionRectItem(QGraphicsRectItem):
         """The unique ID of the detection this box represents."""
         return self._detection_id
     
+    def _current_handle_size(self) -> float:
+        """
+        Compute handle size in scene coordinates that maps to a consistent
+        screen size.
+
+        If no view is available (item not in a scene yet), falls back to
+        the default.
+        """
+        if self.scene() is None:
+            return _HANDLE_SIZE
+
+        views = self.scene().views()
+        if not views:
+            return _HANDLE_SIZE
+
+        # Get the view's horizontal scale factor
+        transform = views[0].transform()
+        scale = transform.m11()  # horizontal scale
+
+        if scale <= 0:
+            return _HANDLE_SIZE
+
+        # Target: 5 screen pixels per handle half-size
+        return 6.0 / scale
+    
     def _handle_rects(self) -> dict[_HandlePosition, QRectF]:
         """
         Calculates the rectangles for all eight resize handles.
@@ -156,7 +183,7 @@ class DetectionRectItem(QGraphicsRectItem):
         Returns coordinates in the item's local coordinate system.
         """
         r = self.rect()
-        s = _HANDLE_SIZE
+        s = self._current_handle_size()
         cx = r.x() + r.width() / 2
         cy = r.y() + r.height() / 2
 
@@ -369,7 +396,7 @@ class DetectionRectItem(QGraphicsRectItem):
             self._detection_id, xc, yc, w, h
         )
 
-    def boundingrect(self) -> QRectF:
+    def boundingRect(self) -> QRectF:
         """
         Expand the bounding rect to include resize handles.
         
@@ -379,7 +406,7 @@ class DetectionRectItem(QGraphicsRectItem):
         correctly.
         """
         r = self.rect()
-        margin = _HANDLE_SIZE + 1
+        margin = self._current_handle_size() + 1
         return r.adjusted(-margin, -margin, margin, margin)
     
     def paint(
@@ -391,20 +418,27 @@ class DetectionRectItem(QGraphicsRectItem):
         """
         Draw the bounding box and, if selected, the resize handles.
 
-        The base rectangle is always drawn. Resize handles are only drawn when
-        the item is selected, keeping the unselected appearance clean.
+        The base rectangle is always drawn. When selected, the box colour
+        changes to cyan and resize handles appear at corners and edge
+        midpoints.
         """
 
-        # Draw the main rectangle
-        painter.setPen(self.pen())
+        # Use cyan pen when selected, default pen otherwise
+        if self.isSelected():
+            highlight_pen = QPen(QColor(0, 255, 255), 2.0)
+            highlight_pen.setCosmetic(True)
+            painter.setPen(highlight_pen)
+        else:
+            painter.setPen(self.pen())
+
         painter.setBrush(self.brush())
         painter.drawRect(self.rect())
 
         # Draw resize handles when selected
         if self.isSelected():
-            # Handle colour
             handle_pen = QPen(QColor(255, 255, 255), 1.0)
-            handle_brush = QBrush(self._default_pen_colour)
+            handle_pen.setCosmetic(True)
+            handle_brush = QBrush(QColor(0, 255, 255))
             painter.setPen(handle_pen)
             painter.setBrush(handle_brush)
 
@@ -444,6 +478,8 @@ class DetectionRectItem(QGraphicsRectItem):
         """Update the box colour (e.g. after status change)."""
         b, g, r = bgr
         colour = QColor(r, g, b)
-        # Box width
-        self.setPen(QPen(colour, 2.0))
+        pen = QPen(colour, 2.0)
+        pen.setCosmetic(True)
+        self.setPen(pen)
+        self._default_pen_colour = colour
         self.update()
