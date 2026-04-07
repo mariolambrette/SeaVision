@@ -45,7 +45,10 @@ seavision/gui/shared/session_utils.py
 seavision/gui/validation/__init__.py
 seavision/gui/validation/button_styles.py
 seavision/gui/validation/detection_detail.py
+seavision/gui/validation/detection_rect_item.py
 seavision/gui/validation/detection_table.py
+seavision/gui/validation/interactive_frame_scene.py
+seavision/gui/validation/interactive_frame_view.py
 seavision/gui/validation/s3_browser.py
 seavision/gui/validation/seekable_source.py
 seavision/gui/validation/session.py

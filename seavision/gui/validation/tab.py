@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QProgressDialog,
     QPushButton,
@@ -56,7 +57,9 @@ from seavision.gui.validation.validation_model import (
 )
 from seavision.gui.validation.video_cache import S3VideoCache
 from seavision.gui.validation.video_list import VideoListWidget
-from seavision.gui.validation.video_viewer import FrameDisplay
+from seavision.gui.validation.interactive_frame_view import (
+    InteractiveFrameView,
+)
 from seavision.gui.validation.video_worker import VideoDecoderWorker
 from seavision.engine.visualiser import (
     CSVDetectionLoader,
@@ -268,19 +271,20 @@ class ValidationTab(QWidget):
     _request_frame_immediate = Signal(int)
     _set_highlight = Signal(object) # Detection object or None
     _set_playback_speed = Signal(float) # Playback speed multiplier
+    _set_annotations_enabled = Signal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
 
         # --- Create widgets ---
-        self._viewer = FrameDisplay()
+        self._viewer = InteractiveFrameView()
         self._transport = TransportBar()
         self._detection_model = DetectionTableModel()
         self._detection_table = DetectionTableView()
         self._detection_table.setModel(self._detection_model)
         self._detail_panel = DetectionDetailPanel()
 
-        # === Action buttons ---
+        # --- Action buttons ---
         button_container = QVBoxLayout()
 
         # Top row - review actions
@@ -465,6 +469,9 @@ class ValidationTab(QWidget):
         )
         self._set_highlight.connect(self._worker.set_highlight_detection)
         self._set_playback_speed.connect(self._worker.set_speed)
+        self._set_annotations_enabled.connect(
+            self._worker.set_annotations_enabled
+        )
 
         # --- Connect worker signals to slots ---
         self._worker.frame_ready.connect(self._viewer.update_frame)
@@ -509,6 +516,17 @@ class ValidationTab(QWidget):
         # --- Conect video list signals ---
         self._video_list.video_selected.connect(self._on_video_selected)
 
+        # --- Connect signals for interactive editing ---
+        self._viewer.scene.detection_geometry_changed.connect(
+            self._on_detection_geometry_changed
+        )
+        self._viewer.scene.detection_draw_complete.connect(
+            self._on_detection_drawn
+        )
+        self._viewer.scene.detection_rect_selected.connect(
+            self._on_scene_detection_selected
+        )  
+
         # --- Debounce timer for seek requests ---
         self._seek_timer = QTimer()
         self._seek_timer.setSingleShot(True)
@@ -521,6 +539,14 @@ class ValidationTab(QWidget):
 
         # --- Keyboard shortcuts ---
         self._setup_shortcuts()
+
+        # --- Context menus ---
+        self._viewer.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu
+        )
+        self._viewer.customContextMenuRequested.connect(
+            self._on_frame_context_menu
+        )
 
     
     def _show_status(self, message: str) -> None:
@@ -705,6 +731,10 @@ class ValidationTab(QWidget):
         if first_source is not None:
             self._open_video_for_source(first_source)
 
+        # Disbale worker side annotations so that all annotation is handled
+        # by the interactive frame viewer
+        self._set_annotations_enabled.emit(False)
+
         logger.info(
             "Session setup complete: %d videos available",
             len(resolved),
@@ -834,6 +864,7 @@ class ValidationTab(QWidget):
         self._active_source_file = None
         self._validation_model = None
         self._clear_detection_source.emit()
+        self._set_annotations_enabled.emit(True)
 
         # Clear the detection table and detail panel
         self._detection_model.set_detections([])
@@ -929,8 +960,6 @@ class ValidationTab(QWidget):
             callback = self._s3_on_complete
             self._s3_on_complete = None
             callback()
-
-
 
     def _download_s3_videos(
             self, 
@@ -1260,6 +1289,82 @@ class ValidationTab(QWidget):
         metadata = SeekableVideoSource._read_metadata(filepath)
         return self._confirm_preload(filepath, metadata)
     
+    def _update_scene_detections(self) -> None:
+        """
+        Synchronise the scene's detection overlays with the current frame.
+
+        Reads detections for the current frame from the ValidationModel, maps
+        their status to colours, and passes them to the scene for rendering as
+        iteractive rect items.
+        """
+        if (
+            self._validation_model is None
+            or self._active_source_file is None
+        ):
+            self._viewer.scene.set_detections([])
+            return
+        
+        validated_dets = self._validation_model.get_detections_for_frame(
+            self._active_source_file, self._current_frame
+        )
+
+        # Status -> BGR colour mapping
+        status_colours = {
+            ValidationStatus.PENDING:   (0, 0, 255),     # Red
+            ValidationStatus.CONFIRMED: (0, 200, 0),     # Green
+            ValidationStatus.CORRECTED: (0, 200, 0),     # Green
+            ValidationStatus.REJECTED:  (128, 128, 128), # Grey
+            ValidationStatus.SKIPPED:   (128, 128, 128), # Grey
+        }
+
+        det_infos = []
+        for vd in validated_dets:
+            # Skip rejected/skipped unless toggled on
+            if vd.status in (
+                ValidationStatus.REJECTED, 
+                ValidationStatus.SKIPPED
+            ):
+                if (
+                    self._active_detection_adapter is not None
+                    and not self._active_detection_adapter.show_rejected
+                ):
+                    continue
+
+            det = vd.detection
+
+            # Use corrected geometry if available
+            if vd.corrected_geometry is not None:
+                geom = vd.corrected_geometry
+                xc = geom["xc"]
+                yc = geom["yc"]
+                w = geom["width"]
+                h = geom["height"]
+            else:
+                xc = det.xc
+                yc = det.yc
+                w = det.width
+                h = det.height
+
+            det_infos.append({
+                "detection_id": vd.id,
+                "x1": xc - w / 2,
+                "y1": yc - h / 2,
+                "width": w,
+                "height": h,
+                "colour": status_colours.get(
+                    vd.status, (0, 0, 255)
+                ),
+                "editable": True,
+            })
+        
+        self._viewer.scene.set_detections(det_infos)
+
+        # Restore highlight if a detection is selected
+        if self._selected_detection is not None:
+            self._viewer.scene.highlight_detection(
+                self._selected_detection.id
+            )
+
     def _on_detection_selected(
         self, row: int, frame_number: int,
     ) -> None:
@@ -1295,17 +1400,24 @@ class ValidationTab(QWidget):
     def _seek_to_frame_with_highlight(
             self, frame_number: int, vd: ValidatedDetection | None
         ) -> None:
-        """Seek to a frame and highlight a specific detection."""
+        """
+        Seek to a frame and highlight a specific detection. Uses the scene
+        viewer by default and falls back to on-frame detection rendering.
+        """
         if vd is None:
+            self._viewer.scene.highlight_detection(None)
             self._set_highlight.emit(None)
         else:
+            self._viewer.scene.highlight_detection(vd.id)
             self._set_highlight.emit(vd.detection)
+
         self._request_frame.emit(frame_number)
 
     def _on_frame_received(self, image, frame_number, timestamp) -> None:
         """Worker has decoded a frame — update our bookkeeping."""
         self._current_frame = frame_number
         self._transport.update_position(frame_number, timestamp)
+        self._update_scene_detections()
 
     def _on_play_pause(self) -> None:
         """User clicked play or pause."""
@@ -1454,7 +1566,14 @@ class ValidationTab(QWidget):
         """Toggle all detection overlays on or off."""
         if self._active_detection_adapter is not None:
             self._active_detection_adapter.show_all = visible
-        # Re-render the current frame
+
+        # Update scene-based overlays (interactive mode)
+        if not visible:
+            self._viewer.scene.set_detections([])
+        else:
+            self._update_scene_detections()
+
+        # Re-render for worker-annotated mode (plain video)
         if self._metadata is not None and not self._is_playing:
             self._request_frame.emit(self._current_frame)
 
@@ -1462,8 +1581,176 @@ class ValidationTab(QWidget):
         """Toggle visibility of rejected and skipped detections."""
         if self._active_detection_adapter is not None:
             self._active_detection_adapter.show_rejected = visible
+
+        # Refresh scene overlays (the filter logic in
+        # _update_scene_detections reads show_rejected from the adapter)
+        self._update_scene_detections()
+
+        # Re-render for worker-annotated mode (plain video)
         if self._metadata is not None and not self._is_playing:
             self._request_frame.emit(self._current_frame)
+
+    # --- Detection modification ---
+    def _on_detection_geometry_changed(
+        self,
+        detection_id: int,
+        xc: float,
+        yc: float,
+        width: float,
+        height: float,
+    ) -> None:
+        """
+        Handle a detection box being dragged or resized in the scene.
+
+        Writed the new geometry to the ValidationModel. The model automatically
+        sets the status to CORRECTED and emits the appropiate signals, which
+        update the table, status bar, and video list.
+        """
+        if self._validation_model is None:
+            return
+        
+        self._validation_model.set_corrected_geometry(
+            detection_id, xc, yc, width, height
+        )
+
+        # Update the detail panel if this is the selected detection
+        if (
+            self._selected_detection is not None
+            and self._selected_detection.id == detection_id
+        ):
+            fps = self._metadata.fps if self._metadata else None
+            self._detail_panel.set_detection(
+                self._selected_detection, fps=fps
+            )
+
+        logger.debug(
+            "Detection %d geometry corrected: "
+            "(%.1f, %.1f, %.1f, %.1f)",
+            detection_id, xc, yc, width, height,
+        )
+
+    def _on_detection_drawn(
+        self,
+        xc: float,
+        yc: float,
+        width: float,
+        height: float,
+    ) -> None:
+        """
+        Handle a new bounding box drawn by the user in draw-to-create mode.
+        """
+        if self._validation_model is None:
+            return
+        if self._active_source_file is None:
+            return
+        
+        # --- User selects class label ---
+        labels = sorted(self._validation_model.labels)
+        if not labels:
+            labels = ["unknown"]
+        
+        label, ok = QInputDialog.getItem(
+            self,
+            "Detection Label",
+            "Select a class for this detection:",
+            labels,
+            current=0,
+            editable=True,
+        )
+        if not ok or not label:
+            return
+        
+        # Add the label to the model's set if it's new
+        if label not in self._validation_model.labels:
+            self._validation_model.labels.add(label)
+            self._populate_class_filter()
+
+        # --- Add the detection to the model ---
+        self._validation_model.add_detection(
+            source_file=self._active_source_file,
+            frame_number=self._current_frame,
+            xc=xc,
+            yc=yc,
+            width=width,
+            height=height,
+            label=label,
+        )
+
+    def _on_scene_detection_selected(self, detection_id: int) -> None:
+        """
+        Handle a detection being clicked in the scene.
+
+        Finds the corresponding row in the detection table and selects it, which
+        triggers the existing selection -> detail panel -> highlight logic.
+        """
+        row = self._find_row_for_detection_id(detection_id)
+        if row is not None:
+            self._detection_table.select_row(row)
+
+    def _find_row_for_detection_id(self, detection_id: int) -> int | None:
+        """Find the source model row for a given detection ID."""
+        for row in range(len(self._detection_model._detections)):
+            if self._detection_model._detections[row].id == detection_id:
+                return row
+        return None
+    
+    def _change_detection_label(self, vd: ValidatedDetection) -> None:
+        """
+        Show a dialog to change a detection's label.
+
+        This allows the reviewer to correct mislabelled pipeline detections 
+        without needing to reject and re-add them.
+        """
+        labels = sorted(self._validation_model.labels)
+        current_label = vd.detection.label or ""
+        current_index = (
+            labels.index(current_label) if current_label in labels else 0
+        )
+
+        new_label, ok = QInputDialog.getItem(
+            self,
+            "Change Label",
+            "Select the correct label:",
+            labels,
+            current=current_index,
+            editable=True,
+        )
+        if not ok or not new_label:
+            return
+        
+        # Update the detection's label directly
+        vd.detection.label = new_label
+
+        # Add the label to the set if it's already there
+        if new_label not in self._validation_model.labels:
+            self._validation_model.labels.add(new_label)
+            self._populate_class_filter()
+
+        # Mark as having unsaved changes
+        self._has_unsaved_changes = True
+        main_window = self.window()
+        if hasattr(main_window, "update_title"):
+            main_window.update_title()
+
+        # Refresh the table and detail panel
+        fps = self._metadata.fps if self._metadata else None
+        self._detail_panel.set_detection(vd, fps=fps)
+        self._update_scene_detections()
+
+        # Emit dataChanged so the table repaints the label column
+        for row, table_vd in enumerate(
+            self._detection_model._detections
+        ):
+            if table_vd.id == vd.id:
+                top_left = self._detection_model.index(row, 0)
+                bottom_right = self._detection_model.index(
+                    row,
+                    self._detection_model.columnCount() - 1,
+                )
+                self._detection_model.dataChanged.emit(
+                    top_left, bottom_right
+                )
+                break  
 
     # --- Detection status ---
     def _on_detection_status_changed(
@@ -1494,9 +1781,8 @@ class ValidationTab(QWidget):
                 )
                 break
 
-        # Re-render the current frame to update box colours
-        if self._metadata is not None and not self._is_playing:
-            self._request_frame.emit(self._current_frame)
+        # Update detection overlays to reflect the new status colour
+        self._update_scene_detections()
 
     def _on_progress_changed(self, progress: dict) -> None:
         """Update the status bar with progress."""
@@ -1877,6 +2163,50 @@ class ValidationTab(QWidget):
         elif action_name == "select":
             self._select_validated_detection(vd)
 
+    def _on_frame_context_menu(self, pos) -> None:
+        """Show a context menu when right-clicking on the video frame."""
+        menu = QMenu(self)
+
+        # Add detection
+        add_action = menu.addAction("&Add Detection")
+        add_action.triggered.connect(self._toggle_add_mode)
+
+        menu.addSeparator()
+
+        # Frame level batch actions
+        if self._validation_model is not None:
+            confirm_frame = menu.addAction("Confirm All on Frame")
+            confirm_frame.triggered.connect(
+                lambda: self._apply_status_to_frame(
+                    ValidationStatus.CONFIRMED
+                )
+            )
+            
+            reject_frame = menu.addAction("Reject All on Frame")
+            reject_frame.triggered.connect(
+                lambda: self._apply_status_to_frame(
+                    ValidationStatus.REJECTED
+                )
+            )
+
+        menu.addSeparator()
+
+        # Detection editing (only if a detection is selected)
+        if self._selected_detection is not None:
+            vd = self._selected_detection
+
+            change_label = menu.addAction("Change Label...")
+            change_label.triggered.connect(
+                lambda: self._change_detection_label(vd)
+            )
+
+            if vd.is_manual:
+                remove_action = menu.addAction("Remove Detection")
+                remove_action.triggered.connect(
+                    lambda: self._on_remove(vd.id)
+                )
+
+        menu.exec(self._viewer.mapToGlobal(pos))
 
     # --- Error handling and shutdown ---
     def _on_error(self, message: str) -> None:

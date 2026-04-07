@@ -6,8 +6,10 @@ Will eventually be extended to allow editing of bounding box position.
 from PySide6.QtWidgets import QFormLayout, QLabel, QWidget
 
 from seavision.engine.detectors.base import Detection
-from seavision.gui.validation.validation_model import ValidatedDetection
-
+from seavision.gui.validation.validation_model import (
+    ValidatedDetection,
+    ValidationStatus
+)
 
 class DetectionDetailPanel(QWidget):
     """
@@ -53,6 +55,9 @@ class DetectionDetailPanel(QWidget):
         self._area_value = QLabel()
         layout.addRow("Area:", self._area_value)
 
+        self._status_value = QLabel()
+        layout.addRow("Status:", self._status_value)
+
     def set_detection(
         self, vd: ValidatedDetection, fps: float | None = None
     ) -> None:
@@ -87,28 +92,53 @@ class DetectionDetailPanel(QWidget):
         else:
             self._track_value.setText("—")
 
+        # Use corrected geometry if available
+        if vd.corrected_geometry is not None:
+            geom = vd.corrected_geometry
+            xc = geom["xc"]
+            yc = geom["yc"]
+            w = geom["width"]
+            h = geom["height"]
+        else:
+            xc = detection.xc
+            yc = detection.yc
+            w = detection.width
+            h = detection.height
+        
         # Position: centre coordinates
         self._position_value.setText(
-            f"({detection.xc:.1f}, {detection.yc:.1f})"
+            f"({xc:.1f}, {yc:.1f})"
         )
 
         # Bounding box coordinates
-        x1 = detection.xc - detection.width / 2
-        y1 = detection.yc - detection.height / 2
-        x2 = detection.xc + detection.width / 2
-        y2 = detection.yc + detection.height / 2
+        x1 = xc - w / 2
+        y1 = yc - h / 2
+        x2 = xc + w / 2
+        y2 = yc + h / 2
         self._bbox_coords_value.setText(
             f"({x1:.1f}, {y1:.1f}, {x2:.1f}, {y2:.1f})"
         )
 
         # Size: width x height
         self._size_value.setText(
-            f"{detection.width:.1f} x {detection.height:.1f}"
+            f"{w:.1f} x {h:.1f}"
         )
 
         # Area: width * height
-        area = detection.width * detection.height
+        area = w * h
         self._area_value.setText(f"{area:.0f} px²")
+
+        # Status
+        status_labels = {
+            ValidationStatus.PENDING: "Pending",
+            ValidationStatus.CONFIRMED: "Confirmed",
+            ValidationStatus.REJECTED: "Rejected",
+            ValidationStatus.SKIPPED: "Skipped",
+            ValidationStatus.CORRECTED: "Corrected",
+        }
+        self._status_value.setText(
+            status_labels.get(vd.status, "Unknown")
+        )
 
     def clear(self) -> None:
         """Reset all fields to a placeholder state."""
@@ -116,6 +146,7 @@ class DetectionDetailPanel(QWidget):
         self._time_value.setText("—")
         self._confidence_value.setText("—")
         self._label_value.setText("—")
+        self._status_value.setText("—")
         self._track_value.setText("—")
         self._position_value.setText("—")
         self._bbox_coords_value.setText("—")
