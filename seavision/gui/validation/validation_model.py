@@ -428,6 +428,38 @@ class ValidationModel(QObject):
         progress = self.get_progress(source_file)
         self.progress_changed.emit(progress)
 
+    def undo_correction(self, detection_id: int) -> bool:
+        """
+        Revert a corrected detection to its original pipeline geometry.
+
+        Clears the corrected_geometry dict and resets the status to PENDING
+        (the reviewer hasn't confirmed or rejected the original geometry).
+
+        Args:
+            detection_id: The unique ID of the detection to revert.
+
+        Returns:
+            True if the detection had a correction that was rverted.
+            False if there was nothing to undo.
+        """
+        vd = self._by_id.get(detection_id)
+
+        if vd is None:
+            return False
+        
+        if vd.corrected_geometry is None:
+            return False
+        
+        vd.corrected_geometry = None
+        vd.status = ValidationStatus.PENDING
+
+        self.detection_status_changed.emit(detection_id, vd.status)
+
+        source_file = vd.detection.source_file
+        self.progress_changed.emit(self.get_progress(source_file))
+
+        return True
+
     # --- Convenience propoerties ---
     @property
     def all_detections(self) -> list[ValidatedDetection]:

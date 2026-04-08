@@ -333,8 +333,8 @@ class DetectionRectItem(QGraphicsRectItem):
             _HandlePosition.TOP_RIGHT,
         ):
             new_top = r.top() + dy
-            if r.bottom() - new_top >= MIN_SIZE:
-                r.setTop(new_top)
+            max_top = r.bottom() - MIN_SIZE
+            r.setTop(min(new_top, max_top))
 
         if handle in (
             _HandlePosition.BOTTOM_LEFT,
@@ -342,8 +342,8 @@ class DetectionRectItem(QGraphicsRectItem):
             _HandlePosition.BOTTOM_RIGHT,
         ):
             new_bottom = r.bottom() + dy
-            if new_bottom - r.top() >= MIN_SIZE:
-                r.setBottom(new_bottom)
+            min_bottom = r.top() + MIN_SIZE
+            r.setBottom(max(new_bottom, min_bottom))
 
         if handle in (
             _HandlePosition.TOP_LEFT,
@@ -351,8 +351,8 @@ class DetectionRectItem(QGraphicsRectItem):
             _HandlePosition.BOTTOM_LEFT,
         ):
             new_left = r.left() + dx
-            if r.right() - new_left >= MIN_SIZE:
-                r.setLeft(new_left)
+            max_left = r.right() - MIN_SIZE
+            r.setLeft(min(new_left, max_left))
 
         if handle in (
             _HandlePosition.TOP_RIGHT,
@@ -360,8 +360,8 @@ class DetectionRectItem(QGraphicsRectItem):
             _HandlePosition.BOTTOM_RIGHT,
         ):
             new_right = r.right() + dx
-            if new_right - r.left() >= MIN_SIZE:
-                r.setRight(new_right)
+            min_right = r.left() + MIN_SIZE
+            r.setRight(max(new_right, min_right))
 
         self.setRect(r)
 
@@ -406,7 +406,7 @@ class DetectionRectItem(QGraphicsRectItem):
         correctly.
         """
         r = self.rect()
-        margin = self._current_handle_size() + 1
+        margin = self._current_handle_size() + 13
         return r.adjusted(-margin, -margin, margin, margin)
     
     def paint(
@@ -458,6 +458,7 @@ class DetectionRectItem(QGraphicsRectItem):
             and self._frame_width > 0
             and self._frame_height > 0
         ):
+            self.prepareGeometryChange()
             r = self.rect()
             new_pos = QPointF(value)
 

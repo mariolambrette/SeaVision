@@ -8,7 +8,7 @@ update_frame etc.) and supports interactive bounding box editing.)
 import logging
 
 from PySide6.QtCore import Signal, Qt
-from PySide6.QtGui import QImage, QPainter, QWheelEvent
+from PySide6.QtGui import QImage, QPainter, QWheelEvent, QKeyEvent
 from PySide6.QtWidgets import (
     QGraphicsView,
     QSizePolicy,
@@ -19,6 +19,54 @@ from seavision.gui.validation.interactive_frame_scene import (
 )
 
 logger = logging.getLogger(__name__)
+
+SCROLL_BAR_STYLE = """
+    QGraphicsView {
+        border: none;
+    }
+    QScrollBar:horizontal {
+        height: 8px;
+        background: transparent;
+        margin: 0;
+    }
+    QScrollBar::handle:horizontal {
+        background: rgba(128, 128, 128, 120);
+        border-radius: 4px;
+        min-width: 30px;
+    }
+    QScrollBar::handle:horizontal:hover {
+        background: rgba(128, 128, 128, 180);
+    }
+    QScrollBar::add-line:horizontal,
+    QScrollBar::sub-line:horizontal,
+    QScrollBar::add-page:horizontal,
+    QScrollBar::sub-page:horizontal {
+        background: transparent;
+        width: 0;
+        height: 0;
+    }
+    QScrollBar:vertical {
+        width: 8px;
+        background: transparent;
+        margin: 0;
+    }
+    QScrollBar::handle:vertical {
+        background: rgba(128, 128, 128, 120);
+        border-radius: 4px;
+        min-height: 30px;
+    }
+    QScrollBar::handle:vertical:hover {
+        background: rgba(128, 128, 128, 180);
+    }
+    QScrollBar::add-line:vertical,
+    QScrollBar::sub-line:vertical,
+    QScrollBar::add-page:vertical,
+    QScrollBar::sub-page:vertical {
+        background: transparent;
+        width: 0;
+        height: 0;
+    }
+"""
 
 class InteractiveFrameView(QGraphicsView):
     """
@@ -72,12 +120,12 @@ class InteractiveFrameView(QGraphicsView):
             QGraphicsView.ViewportAnchor.AnchorViewCenter
         )
         self._zoom_factor = 1.0
-        self._min_zoom = 0.5
+        self._min_zoom = 1.0
         self._max_zoom = 20.0
 
         # Dark background
         self.setStyleSheet("background-color: #1e1e1e; border: none;")
-
+        self.setStyleSheet(SCROLL_BAR_STYLE)
         # Anchor zoom/fit transforms on the centre of the view
         self.setTransformationAnchor(
             QGraphicsView.ViewportAnchor.AnchorViewCenter
@@ -158,6 +206,37 @@ class InteractiveFrameView(QGraphicsView):
 
         self._zoom_factor = new_zoom
         self.scale(factor, factor)
+
+    def pan(self, dx: int, dy: int) -> None:
+        """
+        Pan the viewport by the given pixel amounts.
+
+        Only effective when zoomed in. Does nothing at default zoom since the
+        entire frame is already visible.
+        """
+        if self._zoom_factor <= 1.0:
+            return
+        h_bar = self.horizontalScrollBar()
+        v_bar = self.verticalScrollBar()
+        h_bar.setValue(h_bar.value() + dx)
+        v_bar.setValue(v_bar.value() + dy)
+
+    def keyPressEvent(self, event) -> None:
+        """
+        Suppress default arrow key scrolling.
+
+        QGraphicsView scrolls on arrow keys by default. We block this
+        because arrow key behaviour is handled entirely by tab-level
+        shortcuts (plain arrows for frame stepping, Shift+arrows for
+        panning).
+        """
+        if event.key() in (
+            Qt.Key.Key_Left, Qt.Key.Key_Right,
+            Qt.Key.Key_Up, Qt.Key.Key_Down,
+        ):
+            event.ignore()
+            return
+        super().keyPressEvent(event)
 
     def reset_zoom(self) -> None:
         """Reset zoom to fit the entire frame in the view."""

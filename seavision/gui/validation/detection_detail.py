@@ -140,7 +140,11 @@ class DetectionDetailPanel(QWidget):
             ValidationStatus.CORRECTED: ("Corrected", "#2d6da8"),
         }
         label, colour = status_config.get(vd.status, ("Unknown", "#000000"))
-        self._status_value.setText(label)
+        display_text = label
+        if vd.is_manual:
+            display_text += " (manual)"
+
+        self._status_value.setText(display_text)
         self._status_value.setStyleSheet(
             f"font-size: 14px; font-weight: bold; padding: 4px 0; "
             f"color: {colour};"

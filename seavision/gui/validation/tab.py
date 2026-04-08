@@ -81,6 +81,7 @@ _STATUS_FILTER_MAP = {
     "Show: Skipped": ValidationStatus.SKIPPED,
     "Show: Corrected": ValidationStatus.CORRECTED,
 }
+_PAN_STEP = 40  # pixels per keypress when zoomed in
 
 
 class _S3DownloadWorker(QObject):
@@ -597,6 +598,14 @@ class ValidationTab(QWidget):
         _add("Ctrl+Right", self._on_next_detection)
         _add("0", lambda: self._viewer.reset_zoom())
         _add("F", lambda: self._viewer.reset_zoom())
+        _add("Ctrl+Z", self._undo_correction)
+
+        # Panning when zoomed (Shift+Arrow)
+        _add("Shift+Left",  lambda: self._viewer.pan(-_PAN_STEP, 0))
+        _add("Shift+Right", lambda: self._viewer.pan(_PAN_STEP, 0))
+        _add("Shift+Up",    lambda: self._viewer.pan(0, -_PAN_STEP))
+        _add("Shift+Down",  lambda: self._viewer.pan(0, _PAN_STEP))
+
 
     def open_session(
             self, csv_path: str, video_dir: str
@@ -778,6 +787,7 @@ class ValidationTab(QWidget):
                 source_name
             )
             return
+        
 
         self._active_source_file = source_name
         # --- Send status-aware detection source to the worker ---
@@ -802,6 +812,7 @@ class ValidationTab(QWidget):
         self._detail_panel.clear()
         self._selected_detection = None
         self._set_highlight.emit(None)
+        self._detection_model.set_selected_id(None)
 
         # --- Open video
         preload = self._should_preload(local_path)
@@ -871,6 +882,7 @@ class ValidationTab(QWidget):
         self._video_paths = {}
         self._active_source_file = None
         self._validation_model = None
+        self._detection_model.set_selected_id(None)
         self._clear_detection_source.emit()
         self._set_annotations_enabled.emit(True)
 
@@ -1389,6 +1401,9 @@ class ValidationTab(QWidget):
 
         self._selected_detection = vd
 
+        # Tell the table model which row to bold
+        self._detection_model.set_selected_id(vd.id)
+
         # Update current class
         self._selected_label = vd.detection.label
 
@@ -1751,6 +1766,32 @@ class ValidationTab(QWidget):
         # Uncheck the add mode button
         self._add_btn.setChecked(False)
 
+    def _undo_correction(self) -> None:
+        """
+        Undo the geomemtry correction on the currently selected detection.
+        """
+        if self._validation_model is None:
+            return
+        if self._selected_detection is None:
+            return
+        
+        reverted = self._validation_model.undo_correction(
+            self._selected_detection.id
+        )
+
+        if reverted:
+            # Refresh the detail panel with the original geometry
+            fps = self._metadata.fps if self._metadata else None
+            self._detail_panel.set_detection(
+                self._selected_detection, fps=fps
+            )
+            self._update_scene_detections()
+            self._show_status(
+                "Correction undone — reverted to original geometry"
+            )
+        else:
+            self._show_status("No correction to undo on this detection")
+
     def _on_scene_detection_selected(self, detection_id: int) -> None:
         """
         Handle a detection being clicked in the scene.
@@ -1954,6 +1995,7 @@ class ValidationTab(QWidget):
     def _on_detection_removed(self, detection_id: int) -> None:
         """Handle a manual detection being removed (implemented in Step 7)."""
         self._has_unsaved_changes = True
+        self._detection_model.set_selected_id(None)
         
         self._detection_model.remove_detection_by_id(detection_id)
         self._selected_detection = None
@@ -2228,10 +2270,16 @@ class ValidationTab(QWidget):
         self._viewer.set_add_mode(checked)
 
         if checked:
-            self._show_status(
-                "Add detection mode: click on the video frame to place a " \
-                "detection."
-            )
+            if self._add_mode_auto_label:
+                self._show_status(
+                    f"Add detection mode (label: "
+                    f"{self._add_mode_auto_label}): draw on frame"
+                )
+            else:
+                self._show_status(
+                    "Add detection mode: draw on the video frame "
+                    "to place a detection."
+                )
         else:
             self._add_mode_auto_label = None
             self._clear_status()
@@ -2372,6 +2420,8 @@ class ValidationTab(QWidget):
             self._select_validated_detection(vd)
         elif action_name == "rename_label":
             self._rename_label()
+        elif action_name == "undo_correction":
+            self._undo_correction()
 
     def _on_frame_context_menu(self, pos) -> None:
         """Show a context menu when right-clicking on the video frame."""
@@ -2413,6 +2463,10 @@ class ValidationTab(QWidget):
             change_label.triggered.connect(
                 lambda: self._change_detection_label(vd)
             )
+
+            if vd.corrected_geometry is not None:
+                undo_action = menu.addAction("Undo Correction")
+                undo_action.triggered.connect(self._undo_correction)
 
             if vd.is_manual:
                 remove_action = menu.addAction("Remove Detection")
