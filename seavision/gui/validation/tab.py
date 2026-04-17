@@ -2471,7 +2471,7 @@ class ValidationTab(QWidget):
             if vd.is_manual:
                 remove_action = menu.addAction("Remove Detection")
                 remove_action.triggered.connect(
-                    lambda: self._on_remove(vd.id)
+                    lambda: self._on_remove()
                 )
 
         menu.exec(self._viewer.mapToGlobal(pos))
