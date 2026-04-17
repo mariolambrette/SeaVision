@@ -324,6 +324,38 @@ class ValidationModel(QObject):
         self.progress_changed.emit(progress)
 
         return True
+    
+    def rename_label(self, old_label: str, new_label: str) -> int:
+        """
+        Rename a label aross all detections.
+
+        Every detection (Pipeline and manual) that has 'old_label' gets
+        'new_label'. The label set is updated accordingly.
+
+        Args:
+            old_label: The label to replace.
+            new_label: The new label name.
+
+        Returns:
+            The number of detections that were updated.
+
+        Raises:
+            ValueError: If old_label doesn't exist in the label set
+        """
+        if old_label not in self._labels:
+            raise ValueError(f"Label '{old_label}' not found")
+
+        count = 0
+        for vd in self._detections:
+            if vd.detection.label == old_label:
+                vd.detection.label = new_label
+                count += 1
+
+        # Update the label set
+        self._labels.discard(old_label)
+        self._labels.add(new_label)
+
+        return count
 
     def get_next_unreviewed(
         self, source_file: str, after_id: int = -1
@@ -395,6 +427,38 @@ class ValidationModel(QObject):
         source_file = vd.detection.source_file
         progress = self.get_progress(source_file)
         self.progress_changed.emit(progress)
+
+    def undo_correction(self, detection_id: int) -> bool:
+        """
+        Revert a corrected detection to its original pipeline geometry.
+
+        Clears the corrected_geometry dict and resets the status to PENDING
+        (the reviewer hasn't confirmed or rejected the original geometry).
+
+        Args:
+            detection_id: The unique ID of the detection to revert.
+
+        Returns:
+            True if the detection had a correction that was rverted.
+            False if there was nothing to undo.
+        """
+        vd = self._by_id.get(detection_id)
+
+        if vd is None:
+            return False
+        
+        if vd.corrected_geometry is None:
+            return False
+        
+        vd.corrected_geometry = None
+        vd.status = ValidationStatus.PENDING
+
+        self.detection_status_changed.emit(detection_id, vd.status)
+
+        source_file = vd.detection.source_file
+        self.progress_changed.emit(self.get_progress(source_file))
+
+        return True
 
     # --- Convenience propoerties ---
     @property
