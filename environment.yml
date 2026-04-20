@@ -14,6 +14,7 @@ dependencies:
   - pip:
       - opencv-python-headless>=4.5
       - ultralytics>=8.3.237
+      - onnxruntime
 
 
 # Add transformers>=4.47

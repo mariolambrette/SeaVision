@@ -9,6 +9,13 @@ seavision.egg-info/dependency_links.txt
 seavision.egg-info/entry_points.txt
 seavision.egg-info/requires.txt
 seavision.egg-info/top_level.txt
+seavision/edge/__init__.py
+seavision/edge/bundle.py
+seavision/edge/capture.py
+seavision/edge/config.py
+seavision/edge/postprocess.py
+seavision/edge/runtime.py
+seavision/edge/writer.py
 seavision/engine/__init__.py
 seavision/engine/postprocessor.py
 seavision/engine/detectors/__init__.py
@@ -25,6 +32,10 @@ seavision/engine/detectors/sam3/native.py
 seavision/engine/detectors/yolo/__init__.py
 seavision/engine/detectors/yolo/config.py
 seavision/engine/detectors/yolo/detector.py
+seavision/engine/export/__init__.py
+seavision/engine/export/config.py
+seavision/engine/export/exporter.py
+seavision/engine/export/validation.py
 seavision/engine/source/__init__.py
 seavision/engine/source/base.py
 seavision/engine/source/discovery.py
