@@ -63,6 +63,9 @@ class VideoDecoderWorker(QObject):
         # Playback speed multiplier
         self._speed_multiplier: float = 1.0
 
+        # Toggle annotation drawing
+        self._annotations_enabled: bool = True
+
 
     # --- PLAYBACK SLOT & METHODS ---
     @Slot(str, bool)
@@ -98,7 +101,8 @@ class VideoDecoderWorker(QObject):
                 return
             
             frame, ctx = result
-            frame = self._annotate_frame(frame, ctx)
+            if self._annotations_enabled:
+                frame = self._annotate_frame(frame, ctx)
             image = numpy_bgr_to_qimage(frame)
             self.frame_ready.emit(image, ctx.frame_number, ctx.timestamp)
         except Exception as e:
@@ -130,7 +134,8 @@ class VideoDecoderWorker(QObject):
                 return
             
             frame, ctx = result
-            frame = self._annotate_frame(frame, ctx)
+            if self._annotations_enabled:
+                frame = self._annotate_frame(frame, ctx)
             image = numpy_bgr_to_qimage(frame)
             self.frame_ready.emit(image, ctx.frame_number, ctx.timestamp)
         except Exception as e:
@@ -183,7 +188,8 @@ class VideoDecoderWorker(QObject):
                 return
             
             frame, ctx = result
-            frame = self._annotate_frame(frame, ctx)
+            if self._annotations_enabled:
+                frame = self._annotate_frame(frame, ctx)
             image = numpy_bgr_to_qimage(frame)
             self.frame_ready.emit(image, ctx.frame_number, ctx.timestamp)
         except Exception as e:
@@ -205,6 +211,16 @@ class VideoDecoderWorker(QObject):
         QTimer.singleShot(remaining_ms, self._playback_tick)
 
     # --- ANNOTATION SLOTS & METHODS ---
+    @Slot(bool)
+    def set_annotations_enabled(self, enabled: bool) -> None:
+        """
+        Toggle worker-side annotation rendering.
+
+        When disabled, the worker emits raw frames without any detection 
+        overlays. The interactive scene handles detection rendering instead.
+        """
+        self._annotations_enabled = enabled
+        
     @Slot(object)
     def set_detection_source(self, source: Optional[DetectionSource]) -> None:
         """

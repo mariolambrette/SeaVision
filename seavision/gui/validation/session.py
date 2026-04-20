@@ -113,7 +113,7 @@ class SessionManager:
         path = Path(path)
 
         decisions: dict[str, dict[str, Any]] = {}
-        manual_detections: list[dict[str, Any]] = {}
+        manual_detections: list[dict[str, Any]] = []
 
         for source_file in model.get_all_source_files():
             detections = model.get_detections_for_video(source_file)

@@ -67,6 +67,7 @@ class DetectionTableModel(QAbstractTableModel):
         super().__init__(parent)
         self._detections: list[ValidatedDetection] = []
         self._fps: float | None = None
+        self._selected_id: int | None = None
 
     # --- Compulsory interface methods ---
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
@@ -105,22 +106,61 @@ class DetectionTableModel(QAbstractTableModel):
             return _STATUS_BACKGROUND.get(vd.status)
         
         if role == Qt.ItemDataRole.FontRole:
+            font = QFont()
+            changed = False
+
             if vd.is_manual:
-                font = QFont()
                 font.setItalic(True)
-                return font
-            return None
+                changed = True
+
+            if self._selected_id is not None and vd.id == self._selected_id:
+                font.setBold(True)
+                changed = True
+
+            if col == 5:  # Status column — slightly larger
+                font.setPointSize(font.pointSize() + 2)
+                changed = True
+
+            return font if changed else None
         
         if role == Qt.ItemDataRole.TextAlignmentRole:
             # Centre align numeric columns (frame, Time, Confidence, Track)
             if col in (0, 1, 2, 4):
                 return Qt.AlignmentFlag.AlignCenter
             return Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-        
-
-        
+            
         return None
     
+    def set_selected_id(self, detection_id: int | None) -> None:
+        """
+        Mark a detection as selected so its row renders in bold.
+
+        Emits dataChanged for both the previously selected row and the
+        newly selected row so their FontRole is re-queried.
+        """
+        old_id = self._selected_id
+        self._selected_id = detection_id
+
+        # Repaint the old row (un-bold it)
+        if old_id is not None:
+            for row, vd in enumerate(self._detections):
+                if vd.id == old_id:
+                    self.dataChanged.emit(
+                        self.index(row, 0),
+                        self.index(row, self.columnCount() - 1),
+                    )
+                    break
+
+        # Repaint the new row (bold it)
+        if detection_id is not None:
+            for row, vd in enumerate(self._detections):
+                if vd.id == detection_id:
+                    self.dataChanged.emit(
+                        self.index(row, 0),
+                        self.index(row, self.columnCount() - 1),
+                    )
+                    break
+
     # --- Value display helper ---
     def _display_value(
         self, validated_det: ValidatedDetection, col: int
@@ -380,6 +420,13 @@ class DetectionTableView(QTableView):
         # Last column stretches to fill remaining space
         self.horizontalHeader().setStretchLastSection(True)
 
+        # Bold text for the selected row
+        self.setStyleSheet("""
+            QTableView::item:selected {
+                font-weight: bold;
+            }
+        """)
+
     def setModel(self, model: DetectionTableModel) -> None:
         """
         Set the model and connect selection handling.
@@ -457,7 +504,9 @@ class DetectionTableView(QTableView):
 
         if proxy_index.isValid():
             self.setCurrentIndex(proxy_index)
-            self.scrollTo(proxy_index)
+            self.scrollTo(
+                proxy_index
+            )
 
     def _on_context_menu(self, pos) -> None:
         """Show a context menu for the right clicked row."""
@@ -480,9 +529,16 @@ class DetectionTableView(QTableView):
 
         vd = model.detection_at(source_row)
         remove = None
+        undo_correction = None
         if vd and vd.is_manual:
             menu.addSeparator()
             remove = menu.addAction("Remove")
+
+        menu.addSeparator()
+        change_label = menu.addAction("Change Label")
+        if vd and vd.corrected_geometry is not None:
+            undo_correction = menu.addAction("Undo Correction")
+        rename_label = menu.addAction("Rename Label")
 
         menu.addSeparator()
         select = menu.addAction("Select")
@@ -499,3 +555,9 @@ class DetectionTableView(QTableView):
             self.context_action.emit("remove", source_row)
         elif action == select:
             self.context_action.emit("select", source_row)
+        elif action == change_label:
+            self.context_action.emit("change_label", source_row)
+        elif action == rename_label:
+            self.context_action.emit("rename_label", source_row)
+        elif action == undo_correction:
+            self.context_action.emit("undo_correction", source_row)
