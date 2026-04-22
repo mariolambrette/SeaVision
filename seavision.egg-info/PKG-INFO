@@ -13,6 +13,10 @@ Provides-Extra: dev
 Requires-Dist: pytest; extra == "dev"
 Provides-Extra: gui
 Requires-Dist: PySide6<6.9,>=6.5; extra == "gui"
+Provides-Extra: edge
+Requires-Dist: numpy<2.0; extra == "edge"
+Requires-Dist: opencv-python-headless; extra == "edge"
+Requires-Dist: onnxruntime; extra == "edge"
 
 # SeaVision
 

@@ -21,11 +21,16 @@ dependencies = []
 [project.optional-dependencies]
 # For development in this repo; install with: pip install -e .[dev]
 dev = ["pytest"]
+# Include the GUI in the installation 
 gui = ["PySide6>=6.5,<6.9"]
+# Minimal dependencies for edge runtime
+edge = ["numpy<2.0", "opencv-python-headless", "onnxruntime"]
 
 [project.scripts]
 seavision = "seavision.run_pipeline:main"
 seavision-gui = "seavision.gui.app:main"
+seavision-export = "seavision.run_export:main"
+seavision-edge = "seavision.run_edge:main"
 
 [tool.setuptools.packages.find]
 include = ["seavision*"]

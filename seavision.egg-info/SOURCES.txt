@@ -2,6 +2,8 @@ README.md
 pyproject.toml
 seavision/__init__.py
 seavision/pipeline.py
+seavision/run_edge.py
+seavision/run_export.py
 seavision/run_pipeline.py
 seavision.egg-info/PKG-INFO
 seavision.egg-info/SOURCES.txt

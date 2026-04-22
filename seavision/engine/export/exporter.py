@@ -110,7 +110,7 @@ class ModelExporter:
         # --- Load model ---
         try:
             import ultralytics
-            logger.info("Loading YOLO model from %S", config.weights_path)
+            logger.info("Loading YOLO model from %s", config.weights_path)
             model = ultralytics.YOLO(config.weights_path)
         except ImportError:
             return ExportResult(
