@@ -25,6 +25,7 @@ Usage:
 import logging
 import os
 import time
+import hashlib
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
@@ -33,12 +34,52 @@ import cv2
 import numpy as np
 import onnxruntime as ort
 
+from seavision import __version__
+
 from .capture import CaptureError, FrameCapture
-from .config import EdgeConfig
+from .config import ARTIFACT_MANIFEST_FILENAME, ArtifactManifest, EdgeConfig
 from .postprocess import postprocess, preprocess, scale_boxes_to_original
 from .writer import EdgeDetectionWriter
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_version(version: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in version.split("."))
+
+
+def _version_satisfies(version: str, version_range: str) -> bool:
+    if not version_range:
+        return True
+
+    current = _parse_version(version)
+    for raw_clause in version_range.split(","):
+        clause = raw_clause.strip()
+        if not clause:
+            continue
+
+        operator = None
+        for candidate in (">=", "<=", "==", ">", "<"):
+            if clause.startswith(candidate):
+                operator = candidate
+                break
+
+        if operator is None:
+            raise ValueError(f"Unsupported version range clause: {clause}")
+
+        target = _parse_version(clause[len(operator):].strip())
+        if operator == ">=" and not (current >= target):
+            return False
+        if operator == "<=" and not (current <= target):
+            return False
+        if operator == ">" and not (current > target):
+            return False
+        if operator == "<" and not (current < target):
+            return False
+        if operator == "==" and not (current == target):
+            return False
+
+    return True
 
 
 class EdgeRuntime:
@@ -75,6 +116,50 @@ class EdgeRuntime:
         self._clip_writer: Optional[cv2.VideoWriter] = None
         self._clip_frame_count: int = 0
         self._last_clip_time: float = 0.0
+
+    @staticmethod
+    def _sha256_for_file(path: Path) -> str:
+        digest = hashlib.sha256()
+        with open(path, "rb") as file_obj:
+            for chunk in iter(lambda: file_obj.read(8192), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def _validate_artifact(self) -> None:
+        """Validate the artifact manifest, required files, and checksums."""
+        if not self.config.artifact_dir:
+            return
+
+        artifact_dir = Path(self.config.artifact_dir)
+        manifest = ArtifactManifest.from_file(
+            artifact_dir / ARTIFACT_MANIFEST_FILENAME
+        )
+
+        if not _version_satisfies(__version__, manifest.runtime_version_range):
+            raise ValueError(
+                "Artifact runtime compatibility check failed: "
+                f"SeaVision {__version__} does not satisfy "
+                f"{manifest.runtime_version_range}"
+            )
+
+        for label, file_entry in {
+            "model": manifest.model,
+            "runtime_config": manifest.runtime_config,
+            "export_metadata": manifest.export_metadata,
+        }.items():
+            file_path = artifact_dir / file_entry.path
+            if not file_path.exists():
+                raise FileNotFoundError(
+                    f"Artifact {label} file is missing: {file_path}"
+                )
+
+            if file_entry.sha256:
+                actual_sha256 = self._sha256_for_file(file_path)
+                if actual_sha256 != file_entry.sha256:
+                    raise ValueError(
+                        f"Artifact {label} checksum mismatch for {file_path}: "
+                        f"expected {file_entry.sha256}, got {actual_sha256}"
+                    )
 
     def _load_model(self) -> None:
         """
@@ -233,6 +318,7 @@ class EdgeRuntime:
         processed = 0
         total_inference_ms = 0.0
 
+        self._validate_artifact()
         self._load_model()
         self._open_capture()
         self._open_writer()

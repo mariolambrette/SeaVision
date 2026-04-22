@@ -8,6 +8,7 @@ engine/detectors/__pycache__/
 engine/detectors/motion/__pycache__/
 engine/source/__pycache__/
 engine/visualiser/__pycache__/
+dist/
 
 
 # ==============================================================================
@@ -17,7 +18,7 @@ engine/visualiser/__pycache__/
 config/anguilla.yaml
 config/s3_production.yaml
 test_output/
-tests/
+tests/data/
 TODO.txt
 
 

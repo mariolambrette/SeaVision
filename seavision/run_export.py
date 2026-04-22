@@ -1,5 +1,5 @@
 """
-CLI entry point for model export and edge bundle creation.
+CLI entry point for model export and edge artifact creation.
 
 Usage:
     seavision-export --weights models/fish.pt --output ./deployment
@@ -26,7 +26,7 @@ def parse_args():
     )
     parser.add_argument(
         "--output", default="./export",
-        help="Output directory for exported model and bundle (default: ./export)",
+        help="Output directory for exported model and edge artifact (default: ./export)",
     )
     parser.add_argument(
         "--target", default="onnx",
@@ -48,10 +48,6 @@ def parse_args():
     parser.add_argument(
         "--no-validate", action="store_true",
         help="Skip export validation",
-    )
-    parser.add_argument(
-        "--no-bundle", action="store_true",
-        help="Export only — do not create deployment bundle",
     )
     parser.add_argument(
         "--device", default="cpu",
@@ -133,51 +129,45 @@ def main() -> int:
         print(f"  Validation: {status}")
         print(f"    {result.validation.details}")
 
-    # --- Bundle ---
-    if not args.no_bundle:
-        from pathlib import Path
-        from seavision.edge.bundle import BundleBuilder
-        from seavision.edge.config import EdgeConfig
+    from pathlib import Path
+    from seavision.edge.bundle import ArtifactBuilder
+    from seavision.edge.config import EdgeConfig
 
-        # Find the metadata file
-        exported_path = Path(result.exported_path)
-        if exported_path.is_dir():
-            metadata_path = exported_path / "export_metadata.json"
-        else:
-            metadata_path = exported_path.with_suffix(".json")
+    exported_path = Path(result.exported_path)
+    if exported_path.is_dir():
+        metadata_path = exported_path / "export_metadata.json"
+    else:
+        metadata_path = exported_path.with_suffix(".json")
 
-        if not metadata_path.exists():
-            print(f"\nWARNING: Metadata file not found at {metadata_path}")
-            print("Skipping bundle creation.")
-            return 0
+    if not metadata_path.exists():
+        print(f"\nWARNING: Metadata file not found at {metadata_path}")
+        print("Skipping artifact creation.")
+        return 0
 
-        # Create edge config with CLI overrides
-        edge_config = EdgeConfig(
-            conf_threshold=args.conf,
-            frame_skip=args.frame_skip,
-        )
+    edge_config = EdgeConfig(
+        conf_threshold=args.conf,
+        frame_skip=args.frame_skip,
+    )
 
-        bundle_dir = Path(args.output) / "bundle"
-        print(f"\nCreating deployment bundle: {bundle_dir}")
+    artifact_dir = Path(args.output) / "artifact"
+    print(f"\nCreating edge artifact: {artifact_dir}")
 
-        builder = BundleBuilder(
-            exported_model_path=result.exported_path,
-            export_metadata_path=str(metadata_path),
-            output_dir=str(bundle_dir),
-            edge_config=edge_config,
-        )
-        bundle_path = builder.build()
+    builder = ArtifactBuilder(
+        exported_model_path=result.exported_path,
+        export_metadata_path=str(metadata_path),
+        output_dir=str(artifact_dir),
+        edge_config=edge_config,
+    )
+    artifact_path = builder.build()
 
-        print(f"\nBundle created: {bundle_path}")
-        print(f"\nDeployment instructions:")
-        print(f"  1. Copy the '{bundle_dir.name}' directory to your Pi:")
-        print(f"     scp -r {bundle_dir} pi@<pi-ip>:~/")
-        print(f"  2. On the Pi:")
-        print(f"     cd ~/{bundle_dir.name}")
-        print(f"     chmod +x install.sh")
-        print(f"     ./install.sh")
-        print(f"  3. Run the detector:")
-        print(f"     python3 run.py")
+    print(f"\nArtifact created: {artifact_path}")
+    print("\nDeployment instructions:")
+    print(f"  1. Copy the '{artifact_dir.name}' directory to your Pi:")
+    print(f"     scp -r {artifact_dir} pi@<pi-ip>:~/")
+    print("  2. Install or update the SeaVision wheel on the Pi:")
+    print("     python3 -m pip install '<seavision-wheel>[edge]'")
+    print("  3. Run the detector:")
+    print(f"     seavision-edge --artifact-dir ~/{artifact_dir.name}")
 
     return 0
 

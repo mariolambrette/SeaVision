@@ -5,14 +5,72 @@ This module has no dependencies on PyTorch or Ultralytics. It must be importable
 in the minimal edge enviroment: Python + numpy + OpenCV + PNNX Runtime.
 """
 
+import dataclasses
 import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict
-import dataclasses
 
 logger = logging.getLogger(__name__)
+
+ARTIFACT_MANIFEST_FILENAME = "manifest.json"
+
+
+@dataclass
+class ArtifactFile:
+    """File entry recorded in an edge artifact manifest."""
+
+    path: str
+    sha256: str = ""
+
+
+@dataclass
+class ArtifactManifest:
+    """Manifest describing a wheel-first edge artifact directory."""
+
+    schema_version: int = 1
+    artifact_version: str = "0.1.0"
+    runtime_version_range: str = ">=0.1.0,<0.2.0"
+    model: ArtifactFile = field(default_factory=lambda: ArtifactFile("model.onnx"))
+    runtime_config: ArtifactFile = field(
+        default_factory=lambda: ArtifactFile("config.json")
+    )
+    export_metadata: ArtifactFile = field(
+        default_factory=lambda: ArtifactFile("export_metadata.json")
+    )
+
+    @classmethod
+    def from_file(cls, path: str | Path) -> "ArtifactManifest":
+        """Load an artifact manifest from disk."""
+        manifest_path = Path(path)
+        if not manifest_path.exists():
+            raise FileNotFoundError(f"Artifact manifest not found: {manifest_path}")
+
+        with open(manifest_path, "r", encoding="utf-8") as file_obj:
+            data = json.load(file_obj)
+
+        return cls(
+            schema_version=data.get("schema_version", 1),
+            artifact_version=data.get("artifact_version", "0.1.0"),
+            runtime_version_range=data.get(
+                "runtime_version_range", ">=0.1.0,<0.2.0"
+            ),
+            model=ArtifactFile(**data.get("model", {"path": "model.onnx"})),
+            runtime_config=ArtifactFile(
+                **data.get("runtime_config", {"path": "config.json"})
+            ),
+            export_metadata=ArtifactFile(
+                **data.get(
+                    "export_metadata", {"path": "export_metadata.json"}
+                )
+            ),
+        )
+
+    def to_file(self, path: str | Path) -> None:
+        """Write the manifest to disk."""
+        with open(path, "w", encoding="utf-8") as file_obj:
+            json.dump(dataclasses.asdict(self), file_obj, indent=2)
 
 
 @dataclass
@@ -66,6 +124,7 @@ class EdgeConfig:
     """
 
     model_path: str = "model.onnx"
+    artifact_dir: str = ""
     source: str = "0"
     output_dir: str = "./detections"
 
@@ -84,6 +143,7 @@ class EdgeConfig:
 
     csv_flush_interval: int = 100
     log_level: str = "INFO"
+    runtime_version_range: str = ""
 
     @classmethod
     def from_file(cls, path: str) -> "EdgeConfig":
@@ -120,6 +180,22 @@ class EdgeConfig:
             k: v for k, v in data.items()
             if k in cls.__dataclass_fields__
         })
+
+    @classmethod
+    def from_artifact_dir(cls, path: str | Path) -> "EdgeConfig":
+        """Load runtime config from a wheel-first artifact directory."""
+        artifact_dir = Path(path)
+        manifest = ArtifactManifest.from_file(
+            artifact_dir / ARTIFACT_MANIFEST_FILENAME
+        )
+
+        config = cls.from_file(artifact_dir / manifest.runtime_config.path)
+
+        config.artifact_dir = str(artifact_dir)
+        model_path = artifact_dir / manifest.model.path
+        config.model_path = str(model_path)
+        config.runtime_version_range = manifest.runtime_version_range
+        return config
     
     def to_file(self, path: str) -> None:
         """
@@ -137,7 +213,7 @@ class EdgeConfig:
                 str(k): v for k, v in data["class_names"].items()
             }
 
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
 
         logger.info("Edge config saved to %s", path)

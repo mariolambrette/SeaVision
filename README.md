@@ -74,11 +74,37 @@ The SeaVision pipeline can be fully cosutomised using YAML config files. For
 a documented example of a config file see the
 [default configuration](./config/default.yaml)
 
+
+## Edge Deployment
+
+Users may wish to deploy models developed or refined using SeaVision to an edge
+device. Full support is provided for deploying trained model weight files
+(`*.pt`) on Raspberry Pi.
+
+Edge deployment uses a locally installed wheel runtime plus an exported model
+artifact. Briefly the process involves:
+
+1. Export the `*.pt` file on the workstation with `seavision-export`
+2. Copy the created artifact to the Pi.
+3. Install the SeaVision edge wheel on the Pi.
+4. Launch the runtime against the artifact.
+
+Edge deployment creates SeaVision detection files directly on the Pi which may
+save compute time, power and data transfer requirements. Users can optionally
+export periodic validation clips alongside the detections. See below for 
+detailed documentation:
+
+- [Edge deployment overview](./docs/edge/README.md)
+- [Wheel runtime workflow](./docs/edge/Wheel%20Runtime.md)
+- [Model artifact layout](./docs/edge/Model%20Artifacts.md)
+- [Deploy to Raspberry Pi](./docs/edge/Deploy%20to%20Raspberry%20Pi.md)
+
 ## Documentation
 
 - [Class and API reference](./docs/Class_reference.md)
 - [Architecture and class diagrams](./docs/Class_diagram.md)
 - [AWS setup guide](./docs/AWS_SETUP.md)
+- [Edge deployment docs](./docs/edge/README.md)
 
 ## Project Status
 

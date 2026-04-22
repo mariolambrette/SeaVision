@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 # EdgeRuntime is imported lazily because it depends on onnxruntime,
 # which is only installed on the edge device. This allows the land-side
 # export tooling to import seavision.edge (for EdgeConfig and
-# BundleBuilder) without requiring onnxruntime.
+# artifact builders) without requiring onnxruntime.
 
 
 def __getattr__(name: str):
