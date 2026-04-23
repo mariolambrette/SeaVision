@@ -1,8 +1,8 @@
-# SeaVision
-
 <p align="left">
   <img src="https://raw.githubusercontent.com/mariolambrette/SeaVision/Main/assets/seavision_logo.jpg" alt="Logo" width="200"/>
 </p>
+
+# SeaVision
 
 ## Human-in-the-loop Computer Vision for Marine Environments
 
