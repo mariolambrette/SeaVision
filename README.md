@@ -53,7 +53,7 @@ conda activate seavision
 You can now install SeaVision using pip:
 
 ```bash
-python -m pip install ".[<extras>]"
+pip install ".[<extras>]"
 ```
 
 SeaVision can be installed in various modes, each of which supports different modes of functionality. See below for a full 
