@@ -29,7 +29,7 @@ If you are not a computer vision specialist, use this short path first:
 
 ### Prerequisites
 
-- Python 3.10+
+- Python 3.12
 - pip
 
 ### Install from a cloned repository
