@@ -2,13 +2,15 @@
 
 ## Human-in-the-loop Computer Vision for Marine Environments
 
-SeaVision provides a practical computer-vision workflow for marine monitoring:
+SeaVision offers a practical computer vision workflow for marine monitoring. It supports the development of accurate, 
+custom detection models for specific deployment scenarios. The main workflow is:
 
-1. Run detection on video with a CLI or from Python.
-2. Review and correct detections in a desktop GUI.
-3. Export trained models and deploy them on edge devices (for example Raspberry Pi).
+1. Deploy a generic detector (e.g. motion detection, SAM3-based semantic detection, etc.) on recorded footage.
+2. Use the provided GUI to validate and refine detections into a training dataset.
+3. Train a custom YOLO detection model.
+4. Deploy the trained model on a desktop workstation or edge device with the provided export functionality.
 
-If you are new to the project, start with the Installation section and then the Quick start section.
+If you are new to the project, start with the [installation](#installation) section and then the Quick start section.
 
 ## Installation
 
@@ -17,33 +19,50 @@ If you are new to the project, start with the Installation section and then the 
 - Python 3.10+
 - pip
 
-### Install Matrix (User Types)
-
-Use the row that matches your use case.
-
-| User type | Install command | Primary command(s) |
-|---|---|---|
-| Detection-only users (local videos) | `python -m pip install .` | `seavision` |
-| Detection users with S3 | `python -m pip install ".[s3]"` | `seavision` |
-| GUI users (includes S3 support) | `python -m pip install ".[gui]"` | `seavision-gui` |
-| Edge device operators (runtime only) | `python -m pip install ".[edge]"` | `seavision-edge` |
-| Export users (prepare edge artifacts) | `python -m pip install ".[export]"` | `seavision-export` |
-| Advanced/full users | `python -m pip install ".[all]"` | `seavision`, `seavision-gui`, `seavision-export`, `seavision-edge` |
-
 ### Install from a cloned repository
 
-Clone the repository first, then run one install command from the table above.
+Before installing the package, you must currently clone this repository. Run the following in a
+bash terminal:
 
 ```bash
 git clone https://github.com/mariolambrette/SeaVision
 cd SeaVision
 ```
 
-You can combine extras by separating names with a comma, for example:
+It is reccomended to install SeaVision in a dedicated environment. If you are a [conda](https://www.anaconda.com/docs/getting-started/anaconda/install/overview) run
+the following:
 
 ```bash
-python -m pip install ".[gui,export]"
+conda create seavision
+conda activate seavision
 ```
+
+You can now install SeaVision using pip:
+
+```bash
+python -m pip install ".[<extras>]"
+```
+
+SeaVision can be installed in various modes, each of which supports different modes of functionality. See below for a full 
+description of all installation modes.
+
+### Install Matrix (User Types)
+
+Use the install command that matches your use case.
+
+| User type | Install command | Primary CLI command(s) |
+|---|---|---|
+| Detection-only users (local videos) | `python -m pip install .` | `seavision` |
+| Detection users with videos in S3 bucket | `python -m pip install ".[s3]"` | `seavision` |
+| GUI users (includes S3 support) | `python -m pip install ".[gui]"` | `seavision-gui` |
+| Edge device operators (runtime only) | `python -m pip install ".[edge]"` | `seavision-edge` |
+| Export users (prepare edge artifacts) | `python -m pip install ".[export]"` | `seavision-export` |
+| Advanced/full users | `python -m pip install ".[all]"` | `seavision`, `seavision-gui`, `seavision-export`, `seavision-edge` |
+
+Most users should use either `python -m pip install ".[gui]"` for desktop-only usage or `python -m pip install ".[all]"` if they are
+also likely to use edge deployment functionality. Other installation methods may provide lighter dependencies in specific scenarios.
+
+You can verify your installation by running [test commands](#install-verification)
 
 ### Development install
 
@@ -73,7 +92,6 @@ pip install torch>=2.9.0 torchvision>=0.20.0 --index-url https://download.pytorc
 You can find more information on pytorch compatibility 
 [here](https://pytorch.org/get-started/locally/).
 
-
 ### AWS S3 Access (Optional)
 
 The pipeline supports streaming video directly from AWS. In order to access this
@@ -81,7 +99,7 @@ feature you will need to configure an AWS SSO profile. For more information on
 how to do this and integrate AWS streaming into the SeaVIsion workflow see the
 [AWS setup documentation](./docs/AWS_SETUP.md)
 
-## First-run verification (2 minutes)
+## Install verification
 
 Run the command that matches your installed mode:
 
@@ -102,6 +120,9 @@ seavision-edge --help
 ## Quick start
 
 ### 1. Run the detection pipeline
+
+The full detection pipeline can be run with a CLI command, which can optionally be configured
+with a [YAML file](./config/default.yaml)
 
 ```bash
 # Local files
