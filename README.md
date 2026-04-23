@@ -29,7 +29,7 @@ git clone https://github.com/mariolambrette/SeaVision
 cd SeaVision
 ```
 
-It is reccomended to install SeaVision in a dedicated environment. If you are a [conda](https://www.anaconda.com/docs/getting-started/anaconda/install/overview) run
+It is reccomended to install SeaVision in a dedicated environment. If you are a [conda](https://www.anaconda.com/docs/getting-started/anaconda/install/overview) user run
 the following:
 
 ```bash
