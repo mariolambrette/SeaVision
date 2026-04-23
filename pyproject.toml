@@ -14,17 +14,66 @@ keywords = ["computer-vision", "detection", "marine", "SAM3"]
 classifiers = [
   "Programming Language :: Python",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
 ]
-# Rely on the conda environment for heavy dependencies; keep this list light.
-dependencies = []
+dependencies = [
+  "numpy>=1.21,<2.0",
+  "opencv-python-headless>=4.8",
+  "PyYAML>=6.0",
+  "tqdm>=4.60",
+]
 
 [project.optional-dependencies]
+# Optional S3 support for pipeline and GUI remote workflows.
+s3 = ["boto3>=1.26"]
+
+# GUI mode dependencies.
+gui = [
+  "boto3>=1.26",
+  "PySide6>=6.5,<6.9",
+  "psutil>=5.9",
+]
+
+# Edge runtime dependencies.
+edge = ["onnxruntime>=1.16"]
+
+# Land-side model export dependencies.
+export = [
+  "onnxruntime>=1.16",
+  "ultralytics>=8.3.237",
+]
+
+# SAM3 detector dependencies.
+sam3 = [
+  "pillow>=10.0",
+  "torch>=2.0",
+  "torchvision>=0.20",
+  "transformers>=4.47",
+  "ultralytics>=8.3.237",
+]
+
+# Combined install for workstations needing all SeaVision features.
+all = [
+  "boto3>=1.26",
+  "onnxruntime>=1.16",
+  "pillow>=10.0",
+  "psutil>=5.9",
+  "PySide6>=6.5,<6.9",
+  "torch>=2.0",
+  "torchvision>=0.20",
+  "transformers>=4.47",
+  "ultralytics>=8.3.237",
+]
+
 # For development in this repo; install with: pip install -e .[dev]
-dev = ["pytest"]
-# Include the GUI in the installation 
-gui = ["PySide6>=6.5,<6.9"]
-# Minimal dependencies for edge runtime
-edge = ["numpy<2.0", "opencv-python-headless", "onnxruntime"]
+dev = [
+  "build>=1.2",
+  "pytest>=8.0",
+  "pytest-cov>=5.0",
+  "twine>=5.1",
+]
 
 [project.scripts]
 seavision = "seavision.run_pipeline:main"

@@ -3,6 +3,9 @@
 `seavision-export` creates a model artifact directory to be copied onto the
 Raspberry Pi.
 
+For operator releases, package the artifact under a versioned release directory
+with wheel and checksum metadata.
+
 ## Artifact Layout
 
 ```text
@@ -39,3 +42,17 @@ Current manifest fields are:
 
 The runtime treats the directory artifact as immutable once exported. Any file
 change requires regenerating the manifest so checksum validation remains valid.
+
+## Release bundle checksums
+
+For production release bundles include `checksums/SHA256SUMS.txt` covering:
+
+1. Wheel file(s) in `wheels/`
+2. Artifact files in `artifacts/artifact/`
+
+Example verification:
+
+```bash
+cd release/vX.Y.Z
+sha256sum -c checksums/SHA256SUMS.txt
+```

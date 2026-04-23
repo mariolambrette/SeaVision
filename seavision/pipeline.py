@@ -23,10 +23,6 @@ from .engine.detectors.motion import (
     StabiliserConfig,
     BackgroundConfig
 )
-from .engine.detectors.sam3 import (
-    SAM3DetectorConfig,
-    SAM3Detector,
-)
 from .engine.visualiser import VisualiserConfig, LiveVisualiser
 
 # Module logger

@@ -29,22 +29,22 @@ def parse_args() -> argparse.Namespace:
         epilog="""
 Example usage:
   # Process local videos
-  python run_pipeline.py --input ./footage/ --output ./results/
+    seavision --input ./footage/ --output ./results/
 
   # Process a single video
-  python run_pipeline.py --input ./footage/video.ts --output ./results/
+    seavision --input ./footage/video.ts --output ./results/
 
   # Use a config file
-  python run_pipeline.py --config config/default.yaml
+    seavision --config config/default.yaml
 
   # Dry run (scan without processing)
-  python run_pipeline.py --input ./footage/ --dry-run
+    seavision --input ./footage/ --dry-run
 
   # Resume interrupted processing
-  python run_pipeline.py --input ./footage/ --output ./results/ --resume
+    seavision --input ./footage/ --output ./results/ --resume
 
   # Quick preview (every 10th frame)
-  python run_pipeline.py --input ./footage/ --frame-skip 10
+    seavision --input ./footage/ --frame-skip 10
         """,
     )
 
@@ -241,7 +241,7 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
     return config
 
 
-def discover_sources(args: argparse.Namespace, config_data: dict = None):
+def discover_sources(args: argparse.Namespace, config_data: Optional[dict] = None):
     """
     Discover video sources based on CLI arguments and config file.
 
@@ -332,7 +332,7 @@ def main() -> int:
         print(result.summary())
 
         # Return appropriate exit code
-        if hasattr(result, "videos_failed") and result.videos_failed > 0:
+        if hasattr(result, "videos_failed") and result.videos_failed > 0: # pyright: ignore[reportAttributeAccessIssue]
             return 1  # Some videos failed
         return 0
 

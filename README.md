@@ -2,41 +2,67 @@
 
 ## Human-in-the-loop Computer Vision for Marine Environments
 
-SeaVision provides an integrated frameowork for various Computer Vision
-approaches to analyse marine monitoring data.
+SeaVision provides a practical computer-vision workflow for marine monitoring:
+
+1. Run detection on video with a CLI or from Python.
+2. Review and correct detections in a desktop GUI.
+3. Export trained models and deploy them on edge devices (for example Raspberry Pi).
+
+If you are new to the project, start with the Installation section and then the Quick start section.
 
 ## Installation
 
 ### Prerequisites
 
-- Python 3.10
-- Conda (reccomemnded) or pip
+- Python 3.10+
+- pip
 
-### Setup
+### Install Matrix (User Types)
 
-You can run the code in this repository by cloning the repository and installing
-neccersary depedencies a follows with conda (reccomended) or pip:
+Use the row that matches your use case.
+
+| User type | Install command | Primary command(s) |
+|---|---|---|
+| Detection-only users (local videos) | `python -m pip install .` | `seavision` |
+| Detection users with S3 | `python -m pip install ".[s3]"` | `seavision` |
+| GUI users (includes S3 support) | `python -m pip install ".[gui]"` | `seavision-gui` |
+| Edge device operators (runtime only) | `python -m pip install ".[edge]"` | `seavision-edge` |
+| Export users (prepare edge artifacts) | `python -m pip install ".[export]"` | `seavision-export` |
+| Advanced/full users | `python -m pip install ".[all]"` | `seavision`, `seavision-gui`, `seavision-export`, `seavision-edge` |
+
+### Install from a cloned repository
+
+Clone the repository first, then run one install command from the table above.
 
 ```bash
-# Clone Git repository
 git clone https://github.com/mariolambrette/SeaVision
 cd SeaVision
+```
 
-# Conda setup
-conda env create -f environment.yml
-conda activate seavision
+You can combine extras by separating names with a comma, for example:
 
-# Pip setup
+```bash
+python -m pip install ".[gui,export]"
+```
+
+### Development install
+
+```bash
 python -m venv venv
 venv\Scripts\activate.bat
-pip install -r requirements.txt
+python -m pip install -e ".[dev]"
 ```
-**GPU acceleration**
 
-The above install allows you to run all seavision functionality but does not
+For release/distribution policy and compatibility targets, see:
+
+- [Distribution and compatibility policy](./docs/release/Distribution_and_Compatibility.md)
+
+### Optional GPU acceleration
+
+The above install allows you to run all SeaVision functionality but does not
 provide support for GPU-accelerated processing. Some methods (e.g. SAM3-based
-detection) ill be significantly faster if a GPU is available. You will need to
-install specific dendencies for this manually based on your hardware using pip.
+detection) will be significantly faster if a GPU is available. You will need to
+install GPU-specific dependencies manually based on your hardware.
 
 For example, to run on an NVIDIA RTX 5090 GPU with cuda 13 you could install
 the following:
@@ -55,22 +81,68 @@ feature you will need to configure an AWS SSO profile. For more information on
 how to do this and integrate AWS streaming into the SeaVIsion workflow see the
 [AWS setup documentation](./docs/AWS_SETUP.md)
 
+## First-run verification (2 minutes)
+
+Run the command that matches your installed mode:
+
+```bash
+# Detection CLI
+seavision --help
+
+# GUI
+seavision-gui
+
+# Export CLI
+seavision-export --help
+
+# Edge CLI
+seavision-edge --help
+```
+
 ## Quick start
 
-To initially run the detection pipeline using the default configuration you can
-run the following:
+### 1. Run the detection pipeline
 
 ```bash
 # Local files
-python run_pipeline.py --input ./data/footage/ --output ./results/
+seavision --input ./data/footage/ --output ./results/
 
 # With config file
-python run_pipeline.py --config config/default.yaml
+seavision --config config/default.yaml
 ```
+
+### 2. Launch the GUI
+
+```bash
+seavision-gui
+```
+
+### 3. Export for edge deployment
+
+```bash
+seavision-export --weights models/fish.pt --output ./deployment --target onnx
+```
+
+### 4. Run on an edge device
+
+```bash
+seavision-edge --artifact-dir ./deployment/artifact
+```
+
+## Troubleshooting quick checks
+
+| Problem | Likely cause | Quick check | Fix |
+|---|---|---|---|
+| `seavision: command not found` | Package not installed in active environment | `python -m pip show seavision` | Activate the right environment and reinstall using the install matrix |
+| `seavision-gui: command not found` | GUI extra not installed | `python -m pip show PySide6` | `python -m pip install ".[gui]"` |
+| `seavision-edge: command not found` | Edge extra not installed | `python -m pip show onnxruntime` | `python -m pip install ".[edge]"` |
+| Import error for `boto3` when using S3 | S3 dependency missing | `python -m pip show boto3` | `python -m pip install ".[s3]"` or `python -m pip install ".[gui]"` |
+| GUI starts but S3 login fails | AWS credentials/session not configured | `aws sts get-caller-identity` | Run `aws sso login --profile <profile-name>` and retry |
+| Edge run fails at startup validation | Artifact dir incomplete or invalid | `seavision-edge --artifact-dir <path>` output | Re-run `seavision-export` and copy the full artifact directory again |
 
 ## Configuration
 
-The SeaVision pipeline can be fully cosutomised using YAML config files. For
+The SeaVision pipeline can be fully customised using YAML config files. For
 a documented example of a config file see the
 [default configuration](./config/default.yaml)
 
@@ -95,9 +167,11 @@ export periodic validation clips alongside the detections. See below for
 detailed documentation:
 
 - [Edge deployment overview](./docs/edge/README.md)
+- [Operator quickstart](./docs/edge/Operator%20Quickstart.md)
 - [Wheel runtime workflow](./docs/edge/Wheel%20Runtime.md)
 - [Model artifact layout](./docs/edge/Model%20Artifacts.md)
 - [Deploy to Raspberry Pi](./docs/edge/Deploy%20to%20Raspberry%20Pi.md)
+- [Rollback runbook](./docs/edge/Rollback%20Runbook.md)
 
 ## Documentation
 
@@ -105,7 +179,9 @@ detailed documentation:
 - [Architecture and class diagrams](./docs/Class_diagram.md)
 - [AWS setup guide](./docs/AWS_SETUP.md)
 - [Edge deployment docs](./docs/edge/README.md)
+- [GUI docs](./docs/gui/README.md)
 
 ## Project Status
 
-Note that this project is under [active development](./Bouy%20detection%20plan.md)
+Note that this project is under active development and features may not yet
+work as intended.

@@ -6,8 +6,8 @@
 # Copy this file and modify as needed for different experiments.
 #
 # Usage:
-#   python run_pipeline.py --config config/default.yaml --input ./footage/
-#   python run_pipeline.py --config config/default.yaml --min-area 200  # CLI overrides
+#   seavision --config config/default.yaml --input ./footage/
+#   seavision --config config/default.yaml --min-area 200  # CLI overrides
 #
 # =============================================================================
 

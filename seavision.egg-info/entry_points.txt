@@ -1,5 +1,0 @@
-[console_scripts]
-seavision = seavision.run_pipeline:main
-seavision-edge = seavision.run_edge:main
-seavision-export = seavision.run_export:main
-seavision-gui = seavision.gui.app:main

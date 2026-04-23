@@ -5,19 +5,32 @@ with the correct edge dependencies on the Pi.
 
 ## Install
 
-TODO: The install instructions for the edge wheel need to be checked and
-updated as necessary.
-
-Install the package with edge dependencies on the target device:
+Install or update the package with edge dependencies on the target device.
+Preferred operator path:
 
 ```bash
-python -m pip install "<path-to-wheel>[edge]"
+bash release/vX.Y.Z/scripts/install_edge_runtime.sh \
+    --wheel release/vX.Y.Z/wheels/seavision-X.Y.Z-py3-none-any.whl \
+    --artifact-dir release/vX.Y.Z/artifacts/artifact \
+    --release-version vX.Y.Z
+```
+
+Direct pip alternative:
+
+```bash
+python3 -m pip install --upgrade "<path-to-seavision-wheel>[edge]"
 ```
 
 If you are installing from a local checkout for development:
 
 ```bash
-python -m pip install -e ".[edge]"
+python3 -m pip install -e ".[edge]"
+```
+
+Verify the install:
+
+```bash
+seavision-edge --help
 ```
 
 ## Run
@@ -25,13 +38,13 @@ python -m pip install -e ".[edge]"
 Start the runtime against an exported artifact directory:
 
 ```bash
-seavision-edge --artifact-dir /path/to/artifact
+seavision-edge --artifact-dir /opt/seavision/current-artifact
 ```
 
 Optional overrides are available:
 
 ```bash
-seavision-edge --artifact-dir /path/to/artifact --source 0 --conf 0.4 --frame-skip 5
+seavision-edge --artifact-dir /opt/seavision/current-artifact --source 0 --conf 0.4 --frame-skip 5
 ```
 
 ## Startup Validation
