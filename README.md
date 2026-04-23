@@ -1,5 +1,9 @@
 # SeaVision
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/mario_lambrette/SeaVision/main/assets/seavision_logo.png" alt="Logo" width="200"/>
+</p>
+
 ## Human-in-the-loop Computer Vision for Marine Environments
 
 SeaVision offers a practical computer vision workflow for marine monitoring. It supports the development of accurate, 
