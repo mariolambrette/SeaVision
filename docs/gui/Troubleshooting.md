@@ -83,8 +83,7 @@ credentials are still valid.
  
 ### Detection boxes don't appear
  
-Check **View → Show Detections** is enabled. Also verify the confidence
-threshold in **View → Overlay Settings** isn't filtering out your detections.
+Check **View -> Show Detections** is enabled. Also verify **View -> Show Rejected Detections** is enabled if you are looking for rejected detections.
  
 ### Window opens very small or off-screen
  

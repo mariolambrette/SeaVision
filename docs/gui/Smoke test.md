@@ -88,7 +88,7 @@ seavision-gui
 | 2.9 | Change speed to 2× | Playback visibly faster | ☐ |
 | 2.10 | Change speed to 0.25× | Playback visibly slower | ☐ |
 
-**NB:** Exmaple video file ships with the package at "tests/data/detection_data/09-00-13.ts"
+**NB:** Example video file ships with the package at "tests/data/detection_data/09-00-13.ts"
 
 ---
  
@@ -96,7 +96,7 @@ seavision-gui
  
 | # | Step | Expected result | Pass? |
 |---|------|----------------|-------|
-| 3.1 | File → Open Session (`Ctrl+N`) | Prompted for CSV file | ☐ |
+| 3.1 | File -> New Session (`Ctrl+N`) | Prompted for CSV file | ☐ |
 | 3.2 | Select CSV, then video directory | Session loads, video list populates | ☐ |
 | 3.3 | Video list shows all videos | Each has detection count and "0/N reviewed" | ☐ |
 | 3.4 | First video opens automatically | Frame displays with bounding box overlays | ☐ |

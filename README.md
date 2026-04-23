@@ -10,7 +10,16 @@ custom detection models for specific deployment scenarios. The main workflow is:
 3. Train a custom YOLO detection model.
 4. Deploy the trained model on a desktop workstation or edge device with the provided export functionality.
 
-If you are new to the project, start with the [installation](#installation) section and then the Quick start section.
+If you are new to the project, start with the [Start Here guide](./docs/Start_Here.md).
+
+## Start Here (New Users)
+
+If you are not a computer vision specialist, use this short path first:
+
+1. Read the [Start Here guide](./docs/Start_Here.md) for a plain-language workflow and glossary.
+2. Install SeaVision in GUI mode: `python -m pip install ".[gui]"`.
+3. Run `seavision-gui` and create a new session with `Ctrl+N`.
+4. Follow the GUI [Getting Started guide](./docs/gui/Getting%20started.md).
 
 ## Installation
 
@@ -29,7 +38,7 @@ git clone https://github.com/mariolambrette/SeaVision
 cd SeaVision
 ```
 
-It is reccomended to install SeaVision in a dedicated environment. If you are a [conda](https://www.anaconda.com/docs/getting-started/anaconda/install/overview) user run
+It is recommended to install SeaVision in a dedicated environment. If you are a [conda](https://www.anaconda.com/docs/getting-started/anaconda/install/overview) user, run
 the following:
 
 ```bash
@@ -89,14 +98,14 @@ the following:
 ```bash
 pip install torch>=2.9.0 torchvision>=0.20.0 --index-url https://download.pytorch.org/whl/cu130 --force-reinstall
 ```
-You can find more information on pytorch compatibility 
+You can find more information on PyTorch compatibility
 [here](https://pytorch.org/get-started/locally/).
 
 ### AWS S3 Access (Optional)
 
 The pipeline supports streaming video directly from AWS. In order to access this
 feature you will need to configure an AWS SSO profile. For more information on
-how to do this and integrate AWS streaming into the SeaVIsion workflow see the
+how to do this and integrate AWS streaming into the SeaVision workflow, see the
 [AWS setup documentation](./docs/AWS_SETUP.md)
 
 ## Install verification
@@ -196,6 +205,7 @@ detailed documentation:
 
 ## Documentation
 
+- [Start Here guide](./docs/Start_Here.md)
 - [Class and API reference](./docs/Class_reference.md)
 - [Architecture and class diagrams](./docs/Class_diagram.md)
 - [AWS setup guide](./docs/AWS_SETUP.md)

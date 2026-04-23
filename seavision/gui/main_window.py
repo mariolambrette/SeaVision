@@ -53,7 +53,7 @@ class MainWindow(QMainWindow):
     def _build_menus(self):
         """Create the File menu."""
 
-        # --- File Meanu ---
+        # --- File menu ---
         file_menu = self.menuBar().addMenu("&File")
 
         # Open video
@@ -197,7 +197,7 @@ class MainWindow(QMainWindow):
         return True  # No unsaved changes, or user saved/discarded
 
     def _on_open_video(self) -> None:
-        """Show file dialog and open th selected video."""
+        """Show file dialog and open the selected video."""
         # Check for any unsaved changes
         if not self._unsaved_changes_warning():
             return

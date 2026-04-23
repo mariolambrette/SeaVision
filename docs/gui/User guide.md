@@ -1,7 +1,7 @@
 # User Guide
 
 This document covers every feature of the SeaVision Validation GUI in detail.
-For a quick overview, see [Getting Started](getting-started.md).
+For a quick overview, see [Getting Started](./Getting%20started.md).
 
 ---
 
@@ -159,7 +159,7 @@ Three buttons below the detail panel:
 - **Skip** — defer the decision
 
 All three are also available as keyboard shortcuts (see
-[Keyboard Shortcuts](keyboard-shortcuts.md)).
+[Keyboard Shortcuts](./Keyboard%20shortcuts.md)).
 
 ### Auto-advance
 
@@ -298,11 +298,11 @@ asterisk (`*`) when there are unsaved changes.
 |--------|-------------|
 | Show Detections | Toggle all detection overlays on/off |
 | Show Rejected Detections | Toggle visibility of rejected detection boxes |
-| *Overlay Settings...* | Configure box thickness, colours, label visibility, font size, confidence threshold |
+| *Overlay Settings...* | Planned feature: advanced overlay customization |
 
-**NB:** Overlay settings are not yet implemented - these are coming soon.
+**NB:** Overlay settings are not yet implemented and will be added in a future release.
 
-Overlay settings are persisted across sessions via `QSettings`.
+For now, use **Show Detections** and **Show Rejected Detections** to control overlay visibility.
 
 ---
 
@@ -314,7 +314,7 @@ Overlay settings are persisted across sessions via `QSettings`.
 | Clear Video Cache | Remove cached S3 video downloads (shows size before clearing) |
 | AWS Status | Show current AWS credential state and expiry |
 
-**NB:** AWS status not yet implemented - coming soon.
+**NB:** AWS status is not yet implemented and will be added in a future release.
 
 ---
 

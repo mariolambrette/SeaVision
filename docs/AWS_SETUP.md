@@ -1,7 +1,7 @@
 # AWS S3 Setup Guide for IAM Identity Center (SSO)
 
-This guide will help you set up programmatic access to your S3 bucket through
-IAM Identity Center, allowing you stream AWS-hosted data with SeaVision.
+This guide helps you set up programmatic access to your S3 bucket through
+IAM Identity Center, allowing you to stream AWS-hosted data with SeaVision.
 
 ## Prerequisites
 

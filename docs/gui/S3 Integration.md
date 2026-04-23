@@ -37,9 +37,12 @@ reload.
 
 ## S3 browser
 
-For opening sessions or videos directly from S3 (without a local CSV), use
-**File → Open from S3**. This opens a bucket browser where you can navigate
-prefixes, select a CSV and video directory, and start a session.
+For opening sessions or videos directly from S3 (without a local CSV), use:
+
+- **File -> Open Video from S3...** for a single video
+- **File -> New Session from S3...** for CSV plus video sources
+
+This opens a bucket browser where you can navigate prefixes, select a CSV and video directory, and start a session.
 
 ## Cache management
 

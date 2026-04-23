@@ -176,4 +176,4 @@ tests/gui/
  
 Non-GUI logic (`SessionManager`, `ValidationModel`, `S3VideoCache`,
 `resolve_video_paths`) is fully unit-tested. Widget-level testing is done
-via the [Smoke Test](smoke-test.md).
+via the [Smoke Test](./Smoke%20test.md).

@@ -198,7 +198,7 @@ Each row represents a single detection and includes (at minimum) the source
 video filename, the timestamp within that video, and the predicted label and
 confidence score.
 
-These detections can be vlaidated using the SeaVision [GUI](./gui/Getting%20started.md), 
+These detections can be validated using the SeaVision [GUI](./gui/Getting%20started.md),
 which can also stream video directly from the AWS source.
 
 ---

@@ -46,7 +46,8 @@ All shortcuts are active when the Validation tab has focus.
 | Key | Action |
 |-----|--------|
 | `Ctrl+O` | Open video |
-| `Ctrl+Shift+O` | Open session (CSV + videos) |
+| `Ctrl+N` | New session (CSV + videos) |
+| `Ctrl+L` | Load saved session |
 | `Ctrl+S` | Save session |
 | `Ctrl+Shift+S` | Save session as... |
 | `Ctrl+E` | Export confirmed detections |
