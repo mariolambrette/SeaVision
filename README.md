@@ -1,6 +1,6 @@
 # SeaVision
 
-<p align="center">
+<p align="left">
   <img src="https://raw.githubusercontent.com/mariolambrette/SeaVision/Main/assets/seavision_logo.jpg" alt="Logo" width="200"/>
 </p>
 
