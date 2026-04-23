@@ -34,12 +34,8 @@ Clone the repository and install it in editable mode:
 ```bash
 git clone https://github.com/mariolambrette/SeaVision
 cd SeaVision
-pip install -e .
+pip install -e .[all]
 ```
-
-> **Namespace note:** The current SeaVision package exposes `engine` and `pipeline`
-> as top-level importable modules directly. A future refactor will place them under
-> the `seavision` namespace.
 
 ---
 
@@ -202,6 +198,9 @@ Each row represents a single detection and includes (at minimum) the source
 video filename, the timestamp within that video, and the predicted label and
 confidence score.
 
+These detections can be vlaidated using the SeaVision [GUI](./gui/Getting%20started.md), 
+which can also stream video directly from the AWS source.
+
 ---
 
 
@@ -241,7 +240,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
-    from pipeline import PipelineConfig
+    from seavision.pipeline import PipelineConfig
 
 
 logging.basicConfig(
@@ -296,7 +295,7 @@ def build_pipeline_config(
     device: str,
     imgsz: int,
 ) -> "PipelineConfig":
-    from pipeline import PipelineConfig
+    from seavision.pipeline import PipelineConfig
 
     config_dict = {
         "input": {"frame_skip": 1},
@@ -378,9 +377,9 @@ def main() -> None:
 
     os.environ.setdefault("AWS_PROFILE", profile)
 
-    from engine import discover_s3_videos
-    from engine.detectors.sam3 import SAM3NativeDetector, SAM3DetectorConfig
-    from pipeline import DetectionPipeline
+    from seavision.engine import discover_s3_videos
+    from seavision.engine.detectors.sam3 import SAM3NativeDetector, SAM3DetectorConfig
+    from seavision.pipeline import DetectionPipeline
 
     logger.info("[IMPORTS] SeaVision imports complete.\n")
 
