@@ -77,7 +77,7 @@ class ArtifactBuilder:
             )
 
         # Load export metadata
-        with open(self.export_metadata_path, "r") as f:
+        with open(self.export_metadata_path, "r", encoding="utf-8") as f:
             metadata = json.load(f)
 
         artifact_dir = self.output_dir

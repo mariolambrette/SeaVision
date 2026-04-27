@@ -19,6 +19,10 @@ This guide covers the technical preparation flow:
 4. Install SeaVision on the Pi.
 5. Run a first smoke check.
 
+The guide assumes that you have already cloned the GitHub repository onto your
+workstation, and installed it with the edge dependencies in a dedicated
+python environment. See [lINK TO INSTALLATION GUIDE IN MAIN README] for help.
+
 ## Release folder structure
 
 This guide assumes the release folder follows:

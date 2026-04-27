@@ -9,15 +9,18 @@ from typing import Optional
 
 import yaml
 
-from .engine import discover_local_videos, discover_s3_videos
+from .defaults import write_default_pipeline_config
+from .engine import (
+    discover_local_videos,
+    discover_s3_videos,
+    OutputMode,
+)
 from .pipeline import (
     DetectionPipeline,
     PipelineConfig,
     InputConfig,
-    DetectorConfig,
     setup_logging,
 )
-from .engine import CSVWriterConfig, OutputMode
 
 
 def parse_args() -> argparse.Namespace:
@@ -34,8 +37,11 @@ Example usage:
   # Process a single video
     seavision --input ./footage/video.ts --output ./results/
 
+  # Write the packaged default config to a local file
+    seavision --write-default-config ./seavision-config.yaml
+
   # Use a config file
-    seavision --config config/default.yaml
+    seavision --config ./seavision-config.yaml
 
   # Dry run (scan without processing)
     seavision --input ./footage/ --dry-run
@@ -151,6 +157,19 @@ Example usage:
         "--config", "-c",
         type=str,
         help="Path to YAML configuration file. CLI args override config file values.",
+    )
+    parser.add_argument(
+        "--write-default-config",
+        type=str,
+        help=(
+            "Write the packaged default YAML configuration to the given path "
+            "and exit."
+        ),
+    )
+    parser.add_argument(
+        "--force-write-default-config",
+        action="store_true",
+        help="Allow --write-default-config to overwrite an existing file.",
     )
 
     # Logging
@@ -310,6 +329,22 @@ def main() -> int:
 
     logger = logging.getLogger(__name__)
 
+    if args.write_default_config:
+        try:
+            output_path = write_default_pipeline_config(
+                args.write_default_config,
+                overwrite=args.force_write_default_config,
+            )
+        except FileExistsError as e:
+            print(str(e))
+            print(
+                "Use --force-write-default-config to overwrite the existing file."
+            )
+            return 1
+
+        print(f"Default configuration written to: {output_path}")
+        return 0
+
     try:
         # Load config file if specified
         config_data = {}
@@ -321,7 +356,7 @@ def main() -> int:
 
         # Discover video sources
         sources = discover_sources(args, config_data)
-        logger.info(f"Discovered {len(sources)} video source(s).")
+        logger.info("Discovered %d video source(s).", len(sources))
 
         # Create and run pipeline
         pipeline = DetectionPipeline(config)
@@ -345,8 +380,8 @@ def main() -> int:
     except KeyboardInterrupt:
         logger.info("Interrupted by user.")
         return 130
-    except Exception as e:
-        logger.exception(f"Unexpected error: {e}")
+    except Exception as e: # pylint: disable=broad-exception-caught
+        logger.exception("Unexpected error: %s", e)
         return 1
 
 if __name__ == "__main__":

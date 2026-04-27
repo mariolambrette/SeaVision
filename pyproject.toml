@@ -25,6 +25,12 @@ dependencies = [
   "tqdm>=4.60",
 ]
 
+[project.urls]
+Homepage = "https://github.com/mariolambrette/SeaVision"
+Documentation = "https://github.com/mariolambrette/SeaVision/tree/Main/docs"
+Source = "https://github.com/mariolambrette/SeaVision"
+Issues = "https://github.com/mariolambrette/SeaVision/issues"
+
 [project.optional-dependencies]
 # Optional S3 support for pipeline and GUI remote workflows.
 s3 = ["boto3>=1.26"]
@@ -83,3 +89,6 @@ seavision-edge = "seavision.run_edge:main"
 
 [tool.setuptools.packages.find]
 include = ["seavision*"]
+
+[tool.setuptools.package-data]
+seavision = ["resources/*.yaml"]
