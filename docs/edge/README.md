@@ -1,103 +1,73 @@
 # Edge Deployment
 
-Users may wish to deploy models developed or refined using SeaVision to an edge
-device. Full support is provided for deploying trained model weight files
-(`*.pt`) on Raspberry Pi.
+This section covers how to run a SeaVision model directly on a Raspberry Pi.
 
-Edge deployment creates SeaVision detection files directly on the Pi which may
-save compute time, power and data transfer requirements. Users can optionally
-export periodic validation clips alongside the detections.
+If you are new to deployment work, read the documents in this order:
 
-SeaVision edge deployment relies on two components:
+1. [Concepts and Terms](./Concepts%20and%20Terms.md)
+2. [Prerequisites Checklist](./Prerequisites%20Checklist.md)
+3. [Operator Quickstart](./Operator%20Quickstart.md)
 
-1. A SeaVision wheel with edge dependencies installed on the Pi.
-2. A model artifact directory produced by `seavision-export`.
+## What edge deployment does
 
-## Frozen release artifact layout
+Edge deployment runs the detector on the Raspberry Pi itself instead of sending
+all video back to a larger computer for processing. The result is usually:
 
-Use a versioned release directory so upgrades and rollbacks are deterministic:
+1. Less data transfer.
+2. Lower power and compute use away from the workstation.
+3. Detection CSV files created directly on the device.
+4. Optional validation clips written on the device when enabled.
 
-```text
-release/
-`-- vX.Y.Z/
-    |-- scripts/
-    |   `-- install_edge_runtime.sh
-    |-- wheels/
-    |   `-- seavision-X.Y.Z-py3-none-any.whl
-    |-- artifacts/
-    |   `-- artifact/
-    |       |-- manifest.json
-    |       |-- config.json
-    |       |-- export_metadata.json
-    |       `-- <exported-model-filename>.onnx
-    |-- checksums/
-    |   `-- SHA256SUMS.txt
-    `-- OPERATOR_QUICKSTART.md
-```
+## Choose the right guide
 
-## Install and verify
+### I am a field operator
 
-Install or update the runtime on the Pi using the operator script:
+Use these guides if someone has already prepared the deployment files for you.
 
-```bash
-bash release/vX.Y.Z/scripts/install_edge_runtime.sh \
-    --wheel release/vX.Y.Z/wheels/seavision-X.Y.Z-py3-none-any.whl \
-    --artifact-dir release/vX.Y.Z/artifacts/artifact \
-    --release-version vX.Y.Z
-```
+1. [Concepts and Terms](./Concepts%20and%20Terms.md)
+2. [Prerequisites Checklist](./Prerequisites%20Checklist.md)
+3. [Operator Quickstart](./Operator%20Quickstart.md)
+4. [Troubleshooting](./Troubleshooting.md)
+5. [Rollback Runbook](./Rollback%20Runbook.md)
 
-Verify the runtime command is available:
+### I am preparing the deployment package
 
-```bash
-seavision-edge --help
-```
+Use these guides if you are exporting the model, assembling release files, or
+checking the technical file layout.
 
-## Workflow
+1. [Deploy to Raspberry Pi](./Deploy%20to%20Raspberry%20Pi.md)
+2. [Model Artifacts](./Model%20Artifacts.md)
+3. [Wheel Runtime](./Wheel%20Runtime.md)
 
-1. Export the model and create an artifact directory using `seavision-export`.
-2. Build a versioned release folder (`release/vX.Y.Z`) with wheel, artifact,
-   checksums, bundled installer script, and operator quickstart.
-3. Copy the release folder to the Raspberry Pi.
-4. Install or update SeaVision with `release/vX.Y.Z/scripts/install_edge_runtime.sh`.
-5. Launch runtime using the stable artifact pointer.
-6. Validate the output CSV and optional clips.
+## Core idea
 
-## First-run checks
+SeaVision edge deployment uses two things on the Raspberry Pi:
 
-```bash
-seavision-edge --artifact-dir /opt/seavision/current-artifact
-```
+1. The SeaVision runtime installed on the device.
+2. An exported model folder copied onto the device.
 
-Confirm:
+The operator guides use the plain-language term `release folder` for the set of
+files copied to the Pi. The technical docs may also call this a `release
+bundle`.
 
-1. Startup validation passes (manifest, required files, checksums, version range).
-2. A detections CSV is written to the configured output directory.
-3. Validation clips are written if enabled in config.
+## Success looks like this
 
-## Troubleshooting quick checks
+An edge deployment is working when:
 
-| Problem | Quick check | Fix |
-|---|---|---|
-| `seavision-edge` not found | `python3 -m pip show seavision` | Reinstall with `python3 -m pip install --upgrade "<path-to-seavision-wheel>[edge]"` |
-| Missing `onnxruntime` import | `python3 -m pip show onnxruntime` | Reinstall edge extra as above |
-| Startup validation fails | Review `seavision-edge --artifact-dir <path>` output | Re-export artifact with `seavision-export` and copy full directory again |
-| Runtime exits immediately on version check | Compare package version vs manifest range | Install matching SeaVision wheel version |
+1. `seavision-edge --help` runs on the Pi.
+2. `seavision-edge --artifact-dir /opt/seavision/current-artifact` starts
+   without validation errors.
+3. A detections CSV appears in the output directory defined by the artifact
+   config.
+4. Validation clips appear if they were enabled during export.
 
-## Guides
+## Related references
 
+- [Concepts and Terms](./Concepts%20and%20Terms.md)
+- [Prerequisites Checklist](./Prerequisites%20Checklist.md)
 - [Operator Quickstart](./Operator%20Quickstart.md)
-- [Wheel Runtime](./Wheel%20Runtime.md)
-- [Model Artifacts](./Model%20Artifacts.md)
+- [Troubleshooting](./Troubleshooting.md)
 - [Deploy to Raspberry Pi](./Deploy%20to%20Raspberry%20Pi.md)
+- [Model Artifacts](./Model%20Artifacts.md)
+- [Wheel Runtime](./Wheel%20Runtime.md)
 - [Rollback Runbook](./Rollback%20Runbook.md)
-
-If you are not comfortable with command-line tooling, start with
-[Operator Quickstart](./Operator%20Quickstart.md) and use the transfer section
-that covers WinSCP/FileZilla and USB workflows.
-
-## Current Status
-
-The wheel-first runtime, artifact manifest loading, checksum validation,
-runtime compatibility checks, operator installer workflow, and rollback
-runbook are implemented. Remaining release work is broader smoke coverage and
-parity testing on target devices.

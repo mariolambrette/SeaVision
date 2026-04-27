@@ -187,24 +187,26 @@ Users may wish to deploy models developed or refined using SeaVision to an edge
 device. Full support is provided for deploying trained model weight files
 (`*.pt`) on Raspberry Pi.
 
-Edge deployment uses a locally installed wheel runtime plus an exported model
-artifact. Briefly the process involves:
-
-1. Export the `*.pt` file on the workstation with `seavision-export`
-2. Copy the created artifact to the Pi.
-3. Install the SeaVision edge wheel on the Pi.
-4. Launch the runtime against the artifact.
-
 Edge deployment creates SeaVision detection files directly on the Pi which may
 save compute time, power and data transfer requirements. Users can optionally
 export periodic validation clips alongside the detections. See below for 
 detailed documentation:
 
-- [Edge deployment overview](./docs/edge/README.md)
-- [Operator quickstart](./docs/edge/Operator%20Quickstart.md)
+If you are new to the deployment workflow, use this order:
+
+1. [Edge deployment overview](./docs/edge/README.md)
+2. [Concepts and Terms](./docs/edge/Concepts%20and%20Terms.md)
+3. [Prerequisites Checklist](./docs/edge/Prerequisites%20Checklist.md)
+4. [Operator Quickstart](./docs/edge/Operator%20Quickstart.md)
+5. [Troubleshooting](./docs/edge/Troubleshooting.md)
+
+Use the technical references only when you are preparing the deployment files
+or troubleshooting the package structure:
+
+- [Deploy to Raspberry Pi](./docs/edge/Deploy%20to%20Raspberry%20Pi.md)
+- [Troubleshooting](./docs/edge/Troubleshooting.md)
 - [Wheel runtime workflow](./docs/edge/Wheel%20Runtime.md)
 - [Model artifact layout](./docs/edge/Model%20Artifacts.md)
-- [Deploy to Raspberry Pi](./docs/edge/Deploy%20to%20Raspberry%20Pi.md)
 - [Rollback runbook](./docs/edge/Rollback%20Runbook.md)
 
 ## Documentation

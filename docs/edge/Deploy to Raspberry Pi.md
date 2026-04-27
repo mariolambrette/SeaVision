@@ -1,9 +1,27 @@
 # Deploy to Raspberry Pi
 
-This guide is written for operators who want a predictable copy-and-run
-workflow.
+This guide is for the person preparing the SeaVision deployment package before
+it is handed to a field operator.
 
-This guide assumes the release bundle follows:
+If you are the person running commands on the Raspberry Pi from a prepared
+release folder, use [Operator Quickstart](./Operator%20Quickstart.md) instead.
+
+If you are new to the terminology, start with
+[Concepts and Terms](./Concepts%20and%20Terms.md).
+
+## What this guide covers
+
+This guide covers the technical preparation flow:
+
+1. Export the model on a workstation.
+2. Assemble the release folder.
+3. Copy the release folder to the Raspberry Pi.
+4. Install SeaVision on the Pi.
+5. Run a first smoke check.
+
+## Release folder structure
+
+This guide assumes the release folder follows:
 
 ```text
 release/vX.Y.Z/
@@ -14,7 +32,7 @@ release/vX.Y.Z/
 `-- OPERATOR_QUICKSTART.md
 ```
 
-## Export on the Workstation
+## 1. Export on the workstation
 
 ```bash
 seavision-export --weights models/fish.pt --output ./deployment --target onnx
@@ -22,11 +40,24 @@ seavision-export --weights models/fish.pt --output ./deployment --target onnx
 
 This produces an artifact directory at `./deployment/artifact`.
 
+## 2. Assemble the release folder
+
 Place the wheel and artifact into a versioned release folder before transfer.
 Also copy the installer script from this repository to
 `release/vX.Y.Z/scripts/install_edge_runtime.sh`.
 
-## Copy to the Device
+At a minimum, the release folder should contain:
+
+1. The SeaVision wheel in `wheels/`.
+2. The exported artifact folder in `artifacts/`.
+3. The installer script in `scripts/`.
+4. The checksum file in `checksums/`.
+5. The operator instructions shipped with the release.
+
+Use [Model Artifacts](./Model%20Artifacts.md) if you need the technical file
+contract for the exported model folder.
+
+## 3. Copy to the device
 
 Copy `release/vX.Y.Z` to `~/seavision-release/` on the Pi.
 
@@ -48,12 +79,12 @@ USB option:
 2. Plug USB into Pi
 3. Copy folder into `~/seavision-release/`
 
-## Minimal operator path (copy/paste)
+## 4. Minimal install path on the Raspberry Pi
 
 If you only need one path to follow:
 
 ```bash
-# 1) Copy release bundle
+# 1) Copy release folder
 scp -r ./release/vX.Y.Z <pi-name>@<pi-ip>:~/seavision-release/
 
 # 2) SSH into Pi
@@ -69,7 +100,11 @@ bash ~/seavision-release/vX.Y.Z/scripts/install_edge_runtime.sh \
 seavision-edge --artifact-dir /opt/seavision/current-artifact
 ```
 
-## Install or Update the Runtime
+This installs the edge runtime, checks that the artifact contains a manifest,
+stores the version under `/opt/seavision/releases/`, and points
+`/opt/seavision/current-artifact` at the active artifact.
+
+## 5. Install or update the runtime
 
 ```bash
 bash ~/seavision-release/vX.Y.Z/scripts/install_edge_runtime.sh \
@@ -84,13 +119,13 @@ For development from a checkout on the device:
 python3 -m pip install -e ".[edge]"
 ```
 
-## Launch
+## 6. Launch
 
 ```bash
 seavision-edge --artifact-dir /opt/seavision/current-artifact
 ```
 
-## Smoke Check
+## 7. Smoke check
 
 For a first-pass smoke check, verify:
 
@@ -99,14 +134,19 @@ For a first-pass smoke check, verify:
 3. A short run produces a detection CSV under the configured output directory.
 4. Any validation clips are written when enabled.
 
-## Troubleshooting quick checks
+## 8. Hand off to the operator
 
-| Problem | Quick check | Fix |
-|---|---|---|
-| `seavision-edge` command missing | `python3 -m pip show seavision` | Reinstall with `python3 -m pip install --upgrade "<path-to-seavision-wheel>[edge]"` |
-| Import error for ONNX Runtime | `python3 -m pip show onnxruntime` | Reinstall edge extra as above |
-| Artifact rejected at startup | `seavision-edge --artifact-dir /opt/seavision/current-artifact` logs | Recreate artifact with `seavision-export` and copy the complete folder |
-| No output CSV after launch | Check `config.json` output_dir in artifact | Ensure write permissions and rerun with correct artifact directory |
+Once the release folder has been prepared and tested, hand the operator these
+docs in order:
+
+1. [Concepts and Terms](./Concepts%20and%20Terms.md)
+2. [Prerequisites Checklist](./Prerequisites%20Checklist.md)
+3. [Operator Quickstart](./Operator%20Quickstart.md)
+
+## Troubleshooting
+
+Use [Troubleshooting](./Troubleshooting.md) for the quick-check table and the
+most common operator and deployment fixes.
 
 ## Rollback
 

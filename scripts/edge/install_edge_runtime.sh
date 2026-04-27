@@ -15,13 +15,15 @@ Usage:
     [--python python3]
 
 Required:
-  --wheel            Path to SeaVision wheel file.
-  --artifact-dir     Path to edge artifact directory (or parent containing artifact/).
+    --wheel            Path to the SeaVision package file (.whl) to install.
+    --artifact-dir     Path to the exported model folder (artifact), or a parent
+                                         folder containing artifact/.
 
 Optional:
-  --release-version  Version label for versioned storage under runtime root.
-                     Example: v0.1.0
-  --runtime-root     Runtime base directory for versioned artifacts and stable pointers.
+    --release-version  Version label to save under the runtime root for rollback.
+                                         Also updates the current paths used by the runtime.
+                                         Example: v0.1.0
+    --runtime-root     Runtime base directory for versioned installs and current paths.
                      Default: /opt/seavision
   --python           Python executable to use. Default: python3
 EOF
@@ -105,22 +107,22 @@ resolve_artifact_dir() {
 
 RESOLVED_ARTIFACT_DIR="$(resolve_artifact_dir "$ARTIFACT_DIR")"
 if [ -z "$RESOLVED_ARTIFACT_DIR" ]; then
-    echo "ERROR: manifest.json not found in artifact path or nested artifact/ directory." >&2
+    echo "ERROR: manifest.json not found in the exported model folder or nested artifact/ directory." >&2
     echo "Checked: $ARTIFACT_DIR" >&2
     exit 1
 fi
 
-echo "[1/4] Installing or upgrading SeaVision edge runtime..."
+echo "[1/4] Installing SeaVision edge runtime from package file..."
 "$PYTHON_BIN" -m pip install --upgrade "${WHEEL_PATH}[edge]"
 
-echo "[2/4] Verifying seavision-edge command availability..."
+echo "[2/4] Checking that the seavision-edge command is available..."
 if ! command -v seavision-edge >/dev/null 2>&1; then
     echo "ERROR: seavision-edge is not available on PATH after install." >&2
     echo "Try running in the same environment as pip install, or use: $PYTHON_BIN -m seavision.run_edge --help" >&2
     exit 1
 fi
 
-echo "[3/4] Validating artifact manifest presence..."
+echo "[3/4] Checking the exported model folder..."
 if [ ! -f "$RESOLVED_ARTIFACT_DIR/manifest.json" ]; then
     echo "ERROR: manifest.json missing: $RESOLVED_ARTIFACT_DIR/manifest.json" >&2
     exit 1
@@ -131,7 +133,7 @@ mkdir -p "$RUNTIME_ROOT/releases/wheels" "$RUNTIME_ROOT/releases/artifacts"
 ACTIVE_ARTIFACT_DIR="$RESOLVED_ARTIFACT_DIR"
 
 if [ -n "$RELEASE_VERSION" ]; then
-    echo "[4/4] Storing versioned runtime assets for rollback..."
+    echo "[4/4] Saving this version for rollback and updating current paths..."
 
     VERSION_WHEEL_DIR="$RUNTIME_ROOT/releases/wheels/$RELEASE_VERSION"
     VERSION_ARTIFACT_DIR="$RUNTIME_ROOT/releases/artifacts/$RELEASE_VERSION"
@@ -147,16 +149,20 @@ if [ -n "$RELEASE_VERSION" ]; then
 
     ACTIVE_ARTIFACT_DIR="$RUNTIME_ROOT/current-artifact"
 else
+    echo "[4/4] Updating the current artifact path without rollback storage..."
     ln -sfn "$RESOLVED_ARTIFACT_DIR" "$RUNTIME_ROOT/current-artifact"
     ACTIVE_ARTIFACT_DIR="$RUNTIME_ROOT/current-artifact"
 fi
 
 echo ""
 echo "SeaVision edge runtime installation complete."
-echo "Wheel: $WHEEL_PATH"
-echo "Artifact: $RESOLVED_ARTIFACT_DIR"
+echo "Installed package file: $WHEEL_PATH"
+echo "Using exported model folder: $RESOLVED_ARTIFACT_DIR"
 if [ -n "$RELEASE_VERSION" ]; then
-    echo "Release version: $RELEASE_VERSION"
+    echo "Saved release version: $RELEASE_VERSION"
+    echo "Current paths now point to this saved version under $RUNTIME_ROOT"
+else
+    echo "No release version was supplied, so only the current artifact path was updated."
 fi
 echo ""
 echo "Launch command:"
