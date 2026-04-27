@@ -34,7 +34,10 @@ jobs:
           from pathlib import Path
           import zipfile
 
-          wheel = next(Path("dist").glob("seavision-*.whl"))
+          wheels = sorted(Path("dist").glob("*.whl"))
+          if len(wheels) != 1:
+              raise SystemExit(f"Expected exactly one wheel in dist/, found: {wheels}")
+          wheel = wheels[0]
           with zipfile.ZipFile(wheel) as zf:
               names = set(zf.namelist())
 
@@ -112,8 +115,11 @@ jobs:
               "all": "[all]",
           }
 
-          wheel_uri = next(Path("dist").glob("seavision-*.whl")).resolve().as_uri()
-          spec = f"seavision{extras[os.environ['PERSONA']]} @ {wheel_uri}"
+          wheels = sorted(Path("dist").glob("*.whl"))
+          if len(wheels) != 1:
+              raise SystemExit(f"Expected exactly one wheel in dist/, found: {wheels}")
+          wheel_uri = wheels[0].resolve().as_uri()
+          spec = f"seavision-python{extras[os.environ['PERSONA']]} @ {wheel_uri}"
 
           print(f"Installing {spec}")
           subprocess.check_call([sys.executable, "-m", "pip", "install", spec])
