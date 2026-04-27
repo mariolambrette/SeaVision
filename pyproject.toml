@@ -3,8 +3,8 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "seavision"
-version = "0.1.0"
+name = "seavision-python"
+version = "0.1.1a1"
 description = "Human-in-the-loop Computer Vision for Marine Environments"
 readme = "README.md"
 requires-python = ">=3.10"
