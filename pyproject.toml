@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "seavision-python"
-version = "0.1.1a1"
+version = "0.1.1a2"
 description = "Human-in-the-loop Computer Vision for Marine Environments"
 readme = "README.md"
 requires-python = ">=3.10"
