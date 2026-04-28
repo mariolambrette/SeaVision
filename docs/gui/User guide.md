@@ -23,6 +23,7 @@ For a quick overview, see [Getting Started](./Getting%20started.md).
 │  Status bar                                                              │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
+#TODO: Add window screenshot instead of diagram.
 
 All panel boundaries are **draggable splitters** — resize them to suit your
 monitor. Splitter positions are saved between sessions via `QSettings`.

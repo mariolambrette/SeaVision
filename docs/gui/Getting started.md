@@ -2,11 +2,9 @@
 
 ## Prerequisites
 
-- Python 3.10+
-- The SeaVision package installed with GUI extras: `pip install -e ".[gui]"`
-- PySide6 (installed automatically with the `[gui]` extra)
-- OpenCV (`opencv-python`, also included)
-- For videos stored in S3 buckets: `boto3` and configured AWS credentials
+
+You must have installed the SeaVision package with GUI extras in a suitable
+Python environment. For details see [here](.docs/Start_Here.md)
 
 Verify the install:
 

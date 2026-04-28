@@ -30,14 +30,14 @@ workflow involves:
 
 3. Use the [SeaVision GUI](TODO: Link to GUI docs) to review the output of the
     generalisable detector.
-    - The GUi is used for validation (i.e. how accurate is the generalisable
+    - The GUI is used for validation (i.e. how accurate is the generalisable
       detector on my footage?) and for generating training data.
 
 4. Train a custom model using the GUI outputs
     - Annotations made in the GUI can be exported and [converted to YOLO format](TODO: docs for converting SeaVision detections o YOLO format).
     - These annotations can be used to train a custom YOLO detection model with
       the ultralytics framework. See [here](https://docs.ultralytics.com/modes/train/) for details.
-    - Model training wihtin SeaVision is not currently supported as the ultralytics
+    - Model training within SeaVision is not currently supported as the ultralytics
       API abstracts most complexity already.
 
 5. Deploy the trained detection model on recorded and furture footage.
@@ -71,7 +71,7 @@ python -m pip install --upgrade pip
 ```
 
 #### Venv (Windows)
-For windows users withough conda run the following in a powershell terminal:
+For windows users without conda run the following in a powershell terminal:
 ```bash
 py -3.11 -m venv .venv-seavision
 .\.venv-seavision\Scripts\Activate.ps1
@@ -79,14 +79,14 @@ python -m pip install --upgrade pip
 ```
 
 #### Venv (Linux)
-In Linux, without conda run the following:
+In Linux, without conda, run the following:
 ```bash
 python3.11 -m venv .venv-seavision
 source .venv-seavision/bin/activate1
 python -m pip install --upgrade pip
 ```
 
-**NB: python version 3.10 and 3.12 will also work**
+*NB: python versions 3.10 and 3.12 will also work*
 
 #### Install
 You can now install SeaVision using pip on both Linux and Windows run:
