@@ -6,6 +6,13 @@
 
 ## Human-in-the-loop Computer Vision for Marine Environments
 
+> [!WARNING]
+> Documentation is currently out of date.
+> The packaging, release, and edge-deployment flows have changed recently, and
+> some instructions in this README and the linked docs may still describe older
+> clone-first or pre-release workflows. Treat the published release artifacts
+> and current CLI behavior as the source of truth until the docs are refreshed.
+
 SeaVision offers a practical computer vision workflow for marine monitoring. It supports the development of accurate, 
 custom detection models for specific deployment scenarios. The main workflow is:
 
