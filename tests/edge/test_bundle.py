@@ -9,6 +9,7 @@ from seavision.edge.config import (
     ArtifactManifest,
     EdgeConfig,
 )
+from seavision import __version__
 
 
 class TestArtifactBuilder:
@@ -104,7 +105,7 @@ class TestArtifactBuilder:
         manifest = ArtifactManifest.from_file(
             artifact_dir / ARTIFACT_MANIFEST_FILENAME
         )
-        assert manifest.runtime_version_range.startswith(">=0.1.0")
+        assert manifest.runtime_version_range.startswith(f">={__version__}")
 
     def test_edge_config_overrides_apply(self, tmp_path, mock_export):
         model_path, meta_path = mock_export

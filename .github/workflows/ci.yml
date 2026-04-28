@@ -1,0 +1,220 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - Main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: python -m pip install --upgrade pip build twine
+
+      - name: Build distributions
+        run: python -m build
+
+      - name: Validate package metadata
+        run: python -m twine check dist/*
+
+      - name: Verify wheel contains packaged resources
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile
+
+          wheels = sorted(Path("dist").glob("*.whl"))
+          if len(wheels) != 1:
+              raise SystemExit(f"Expected exactly one wheel in dist/, found: {wheels}")
+          wheel = wheels[0]
+          with zipfile.ZipFile(wheel) as zf:
+              names = set(zf.namelist())
+
+          required = {
+              "seavision/__init__.py",
+              "seavision/run_pipeline.py",
+              "seavision/resources/default.yaml",
+          }
+
+          missing = sorted(required - names)
+          if missing:
+              raise SystemExit(f"Wheel is missing required files: {missing}")
+
+          print("Wheel contains required packaged files.")
+          PY
+
+      - name: Upload built distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: dist/*
+
+  smoke:
+    needs: build
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+        python-version:
+          - "3.10"
+          - "3.11"
+          - "3.12"
+        persona:
+          - core
+          - gui
+          - edge
+          - export
+          - all
+
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Ubuntu GUI system libraries
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1
+
+      - name: Download built distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist
+
+      - name: Install wheel for persona
+        env:
+          PERSONA: ${{ matrix.persona }}
+        run: |
+          python -m pip install --upgrade pip
+          python - <<'PY'
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          extras = {
+              "core": "",
+              "gui": "[gui]",
+              "edge": "[edge]",
+              "export": "[export]",
+              "all": "[all]",
+          }
+
+          wheels = sorted(Path("dist").glob("*.whl"))
+          if len(wheels) != 1:
+              raise SystemExit(f"Expected exactly one wheel in dist/, found: {wheels}")
+          wheel_uri = wheels[0].resolve().as_uri()
+          spec = f"seavision-python{extras[os.environ['PERSONA']]} @ {wheel_uri}"
+
+          print(f"Installing {spec}")
+          subprocess.check_call([sys.executable, "-m", "pip", "install", spec])
+          PY
+
+      - name: Run persona smoke test
+        env:
+          PERSONA: ${{ matrix.persona }}
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python - <<'PY'
+          import os
+          import subprocess
+          import sys
+
+          persona = os.environ["PERSONA"]
+
+          def run(*cmd):
+              print("Running:", " ".join(cmd))
+              subprocess.check_call(list(cmd))
+
+          if persona == "core":
+              run("seavision", "--help")
+          elif persona == "gui":
+              run(sys.executable, "-c", "from seavision.gui.main_window import MainWindow; print('GUI import ok')")
+          elif persona == "edge":
+              run("seavision-edge", "--help")
+          elif persona == "export":
+              run("seavision-export", "--help")
+          elif persona == "all":
+              run("seavision", "--help")
+              run(sys.executable, "-c", "from seavision.gui.main_window import MainWindow; print('GUI import ok')")
+              run("seavision-export", "--help")
+              run("seavision-edge", "--help")
+              run(sys.executable, "-c", "import seavision; print(seavision.__version__)")
+          else:
+              raise SystemExit(f"Unknown persona: {persona}")
+          PY
+
+  pytest:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      
+      - name: Install Ubuntu GUI system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1
+
+      - name: Download built distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist
+
+      - name: Install pytest and wheel under test
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip pytest pytest-cov
+          python - <<'PY'
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          wheels = sorted(Path("dist").glob("*.whl"))
+          if len(wheels) != 1:
+              raise SystemExit(f"Expected exactly one wheel in dist/, found: {wheels}")
+          wheel_uri = wheels[0].resolve().as_uri()
+          spec = f"seavision-python[gui,edge] @ {wheel_uri}"
+
+          print(f"Installing {spec}")
+          subprocess.check_call([sys.executable, "-m", "pip", "install", spec])
+          PY
+
+      - name: Run pytest against installed wheel
+        working-directory: ${{ runner.temp }}
+        shell: bash
+        run: |
+          python -m pytest \
+            "$GITHUB_WORKSPACE/tests/edge" \
+            "$GITHUB_WORKSPACE/tests/gui" \
+            -q -ra

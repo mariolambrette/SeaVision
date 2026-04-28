@@ -77,7 +77,7 @@ class ArtifactBuilder:
             )
 
         # Load export metadata
-        with open(self.export_metadata_path, "r") as f:
+        with open(self.export_metadata_path, "r", encoding="utf-8") as f:
             metadata = json.load(f)
 
         artifact_dir = self.output_dir
@@ -164,7 +164,14 @@ class ArtifactBuilder:
 
     @staticmethod
     def _default_runtime_version_range() -> str:
-        major, minor, _patch = (int(part) for part in __version__.split("."))
+        import re
+
+        match = re.match(r"^(\d+)\.(\d+)\.(\d+)", __version__)
+        if not match:
+            raise ValueError(f"Unsupported SeaVision version format: {__version__}")
+
+        major = int(match.group(1))
+        minor = int(match.group(2))
         return f">={__version__},<{major}.{minor + 1}.0"
 
     @staticmethod

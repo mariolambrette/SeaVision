@@ -10,11 +10,11 @@ If you are new to deployment work, read the documents in this order:
 
 ## What edge deployment does
 
-Edge deployment runs the detector on the Raspberry Pi itself instead of sending
-all video back to a larger computer for processing. The result is usually:
+Edge deployment runs a SeaVision detector on a Raspberry Pi instead of requiring
+ all video to be sent to a larger computer for processing. The beneifts include:
 
 1. Less data transfer.
-2. Lower power and compute use away from the workstation.
+2. Lower power and compute use on the workstation.
 3. Detection CSV files created directly on the device.
 4. Optional validation clips written on the device when enabled.
 

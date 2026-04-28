@@ -1,0 +1,139 @@
+# =============================================================================
+# Buoy Detection Pipeline - Default Configuration
+# =============================================================================
+#
+# This file contains all configurable options for the detection pipeline.
+# Copy this file and modify as needed for different experiments.
+#
+# Usage:
+#   seavision --config config/default.yaml --input ./footage/
+#   seavision --config config/default.yaml --min-area 200  # CLI overrides
+#
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Input Options
+# -----------------------------------------------------------------------------
+
+input:
+  # Path to video file or directory (can be overridden via CLI --input)
+  # path: "./footage/"
+  
+  # Glob pattern for matching videos in a directory
+  pattern: "*.ts"
+  
+  # Source type: "local" or "s3"
+  source_type: "local"
+  
+  # S3-specific options (only used when source_type is "s3")
+  s3:
+    bucket: ""
+    prefix: ""
+    profile_name: ""  # AWS SSO profile name (e.g., "m3b-detector")
+  
+  # Process every Nth frame (1 = all frames, 5 = every 5th frame)
+  frame_skip: 1
+
+# -----------------------------------------------------------------------------
+# Output Options
+# -----------------------------------------------------------------------------
+
+output:
+  # Directory where detection CSV files will be saved
+  directory: "./output"
+  
+  # Output mode: "per_video" or "single"
+  #   per_video: Create one CSV per video (e.g., video1_detections.csv)
+  #   single: All detections in one CSV file
+  mode: "per_video"
+  
+  # Filename for single_file mode (ignored in per_video mode)
+  single_file_name: "detections.csv"
+  
+  # Whether to overwrite existing output files
+  # Set to true to replace existing files, false to raise an error
+  overwrite: false
+
+# -----------------------------------------------------------------------------
+# Pipeline Options
+# -----------------------------------------------------------------------------
+
+# Resume mode: skip videos that already have output CSV files
+# Useful for continuing interrupted processing runs
+resume: false
+
+# -----------------------------------------------------------------------------
+# Detector Configuration
+# -----------------------------------------------------------------------------
+
+detector:
+  # Detector type (currently only "motion" is implemented)
+  type: "motion"
+  
+  # Detector-specific configuration
+  config:
+    # --- Motion Detection Options ---
+    
+    # Enable/disable frame stabilisation (compensates for buoy sway)
+    stabilisation_enabled: true
+    
+    # Minimum contour area in pixels (smaller = more sensitive, more noise)
+    min_area: 500
+    
+    # Maximum contour area in pixels (larger areas are likely not fish)
+    max_area: 5000
+    
+    # Morphological operation kernel size (for noise cleanup)
+    morph_kernel_size: 5
+    
+    # Number of morphological operation iterations
+    morph_iterations: 2
+    
+    # --- Persistence Tracking Options ---
+    
+    # Enable persistence filtering (require objects to persist across frames)
+    persistence_enabled: true
+    
+    # Minimum frames an object must persist before being reported
+    min_persistence: 3
+    
+    # Maximum frames an object can be missing before track is dropped
+    max_frames_missing: 5
+    
+    # IoU threshold for matching detections between frames
+    iou_threshold: 0.3
+    
+    # --- Stabiliser Options ---
+    stabiliser:
+      # Feature detector type: "ORB" or "AKAZE"
+      feature_detector: "ORB"
+      
+      # Maximum number of features to detect per frame
+      max_features: 500
+      
+      # Lowe's ratio test threshold for feature matching (0.0 - 1.0)
+      # Lower = stricter matching, fewer but better matches
+      match_ratio: 0.75
+      
+      # Minimum number of feature matches required for homography
+      min_matches: 10
+      
+      # RANSAC reprojection threshold for outlier rejection
+      ransac_threshold: 5.0
+    
+    # --- Background Model Options ---
+    background:
+      # Number of frames used to build the background model
+      # Higher = more stable but slower to adapt
+      history: 600
+      
+      # Variance threshold for foreground classification
+      # Lower = more sensitive to changes
+      var_threshold: 16.0
+      
+      # Whether to detect and mark shadows
+      detect_shadows: true
+      
+      # Learning rate for background model adaptation
+      # -1 = automatic, or 0.0-1.0 where higher = faster adaptation
+      learning_rate: -1.0

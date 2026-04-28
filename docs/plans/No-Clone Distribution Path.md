@@ -36,7 +36,10 @@ Publish pre-built wheels to GitHub Releases so users can `pip install` directly 
   - Computes `SHA256SUMS.txt` for all built artifacts
   - Uploads wheel + checksums as GitHub Release assets
 - [ ] Verify the release URL pattern: `https://github.com/mariolambrette/SeaVision/releases/download/vX.Y.Z/seavision-X.Y.Z-py3-none-any.whl`
-- [ ] Update `scripts/edge/install_edge_runtime.sh` to accept a GitHub Release URL as an alternative to a local path (add `--release-url` flag)
+- [ ] Update `scripts/edge/install_edge_runtime.sh` to accept `--release-dir` and auto-discover the wheel and artifact inside a prepared bundle.
+- [ ] Add a simple top-level `install.sh` wrapper to the prepared edge bundle so operators only run one command.
+- [ ] Optional later: add `--release-url` support if the installer itself should download a bundle from GitHub Releases.
+- [ ] Decide whether edge bundles are generic release assets or deployment-specific assets assembled after model export. If bundles depend on trained/exported models, keep bundle assembly separate from the generic tag-release workflow.
 - [ ] Add a `build` job to an existing CI workflow (or a new `ci.yml`) that builds the wheel on every PR to catch packaging regressions early
 
 **Acceptance criteria:** Pushing a `vX.Y.Z` tag triggers the workflow, produces a release with a wheel and `SHA256SUMS.txt`, and the wheel installs cleanly from the release URL.

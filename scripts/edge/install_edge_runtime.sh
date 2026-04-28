@@ -1,42 +1,49 @@
 #!/usr/bin/env sh
 set -eu
 
-# Install or upgrade SeaVision edge runtime on Raspberry Pi, validate artifact
-# manifest, configure stable current pointers, and print exact launch command.
-
 usage() {
     cat <<'EOF'
 Usage:
   install_edge_runtime.sh \
-    --wheel /path/to/seavision-<version>.whl \
-    --artifact-dir /path/to/artifact \
+    [--release-dir /path/to/release/vX.Y.Z] \
+    [--wheel /path/to/seavision-<version>.whl] \
+    [--artifact-dir /path/to/artifact] \
     [--release-version v0.1.0] \
     [--runtime-root /opt/seavision] \
     [--python python3]
 
-Required:
+Recommended:
+    --release-dir      Path to a prepared release directory containing:
+                       wheels/, artifacts/, scripts/, checksums/.
+
+Advanced:
     --wheel            Path to the SeaVision package file (.whl) to install.
     --artifact-dir     Path to the exported model folder (artifact), or a parent
-                                         folder containing artifact/.
+                       folder containing artifact/.
 
 Optional:
     --release-version  Version label to save under the runtime root for rollback.
-                                         Also updates the current paths used by the runtime.
-                                         Example: v0.1.0
-    --runtime-root     Runtime base directory for versioned installs and current paths.
-                     Default: /opt/seavision
-  --python           Python executable to use. Default: python3
+                       If omitted and --release-dir is supplied, the installer
+                       uses the release directory name.
+    --runtime-root     Runtime base directory for versioned installs and current
+                       paths. Default: /opt/seavision
+    --python           Python executable to use. Default: python3
 EOF
 }
 
 WHEEL_PATH=""
 ARTIFACT_DIR=""
+RELEASE_DIR=""
 RELEASE_VERSION=""
 RUNTIME_ROOT="/opt/seavision"
 PYTHON_BIN="python3"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --release-dir)
+            RELEASE_DIR="$2"
+            shift 2
+            ;;
         --wheel)
             WHEEL_PATH="$2"
             shift 2
@@ -69,22 +76,6 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
-if [ -z "$WHEEL_PATH" ] || [ -z "$ARTIFACT_DIR" ]; then
-    echo "ERROR: --wheel and --artifact-dir are required." >&2
-    usage
-    exit 1
-fi
-
-if [ ! -f "$WHEEL_PATH" ]; then
-    echo "ERROR: Wheel not found: $WHEEL_PATH" >&2
-    exit 1
-fi
-
-if [ ! -d "$ARTIFACT_DIR" ]; then
-    echo "ERROR: Artifact directory not found: $ARTIFACT_DIR" >&2
-    exit 1
-fi
-
 if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
     echo "ERROR: Python executable not found: $PYTHON_BIN" >&2
     exit 1
@@ -105,6 +96,74 @@ resolve_artifact_dir() {
     printf '%s\n' ""
 }
 
+find_release_wheel() {
+    release_dir="$1"
+    find "$release_dir/wheels" -maxdepth 1 -type f -name 'seavision-*.whl' | sort | head -n 1
+}
+
+find_release_artifact_dir() {
+    release_dir="$1"
+
+    if [ -f "$release_dir/artifacts/artifact/manifest.json" ]; then
+        printf '%s\n' "$release_dir/artifacts/artifact"
+        return
+    fi
+
+    manifest_path="$(find "$release_dir/artifacts" -maxdepth 2 -type f -name 'manifest.json' | sort | head -n 1 || true)"
+    if [ -n "$manifest_path" ]; then
+        dirname "$manifest_path"
+        return
+    fi
+
+    printf '%s\n' ""
+}
+
+wheel_uri() {
+    wheel_path="$1"
+    "$PYTHON_BIN" - "$wheel_path" <<'PY'
+from pathlib import Path
+import sys
+
+print(Path(sys.argv[1]).resolve().as_uri())
+PY
+}
+
+if [ -n "$RELEASE_DIR" ]; then
+    if [ ! -d "$RELEASE_DIR" ]; then
+        echo "ERROR: Release directory not found: $RELEASE_DIR" >&2
+        exit 1
+    fi
+
+    if [ -z "$WHEEL_PATH" ]; then
+        WHEEL_PATH="$(find_release_wheel "$RELEASE_DIR")"
+    fi
+
+    if [ -z "$ARTIFACT_DIR" ]; then
+        ARTIFACT_DIR="$(find_release_artifact_dir "$RELEASE_DIR")"
+    fi
+
+    if [ -z "$RELEASE_VERSION" ]; then
+        RELEASE_VERSION="$(basename "$RELEASE_DIR")"
+    fi
+fi
+
+if [ -z "$WHEEL_PATH" ] || [ -z "$ARTIFACT_DIR" ]; then
+    echo "ERROR: Could not determine both the wheel path and artifact directory." >&2
+    echo "Use --release-dir for the simple path, or provide --wheel and --artifact-dir explicitly." >&2
+    usage
+    exit 1
+fi
+
+if [ ! -f "$WHEEL_PATH" ]; then
+    echo "ERROR: Wheel not found: $WHEEL_PATH" >&2
+    exit 1
+fi
+
+if [ ! -d "$ARTIFACT_DIR" ]; then
+    echo "ERROR: Artifact directory not found: $ARTIFACT_DIR" >&2
+    exit 1
+fi
+
 RESOLVED_ARTIFACT_DIR="$(resolve_artifact_dir "$ARTIFACT_DIR")"
 if [ -z "$RESOLVED_ARTIFACT_DIR" ]; then
     echo "ERROR: manifest.json not found in the exported model folder or nested artifact/ directory." >&2
@@ -112,8 +171,10 @@ if [ -z "$RESOLVED_ARTIFACT_DIR" ]; then
     exit 1
 fi
 
-echo "[1/4] Installing SeaVision edge runtime from package file..."
-"$PYTHON_BIN" -m pip install --upgrade "${WHEEL_PATH}[edge]"
+WHEEL_URI="$(wheel_uri "$WHEEL_PATH")"
+
+echo "[1/4] Installing SeaVision edge runtime from the wheel..."
+"$PYTHON_BIN" -m pip install --upgrade "seavision[edge] @ ${WHEEL_URI}"
 
 echo "[2/4] Checking that the seavision-edge command is available..."
 if ! command -v seavision-edge >/dev/null 2>&1; then
@@ -156,8 +217,8 @@ fi
 
 echo ""
 echo "SeaVision edge runtime installation complete."
-echo "Installed package file: $WHEEL_PATH"
-echo "Using exported model folder: $RESOLVED_ARTIFACT_DIR"
+echo "Installed wheel: $WHEEL_PATH"
+echo "Using artifact directory: $RESOLVED_ARTIFACT_DIR"
 if [ -n "$RELEASE_VERSION" ]; then
     echo "Saved release version: $RELEASE_VERSION"
     echo "Current paths now point to this saved version under $RUNTIME_ROOT"
