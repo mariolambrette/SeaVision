@@ -90,6 +90,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install Ubuntu GUI system libraries
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1
+
       - name: Download built distributions
         uses: actions/download-artifact@v4
         with:
@@ -173,6 +179,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      
+      - name: Install Ubuntu GUI system libraries
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1
 
       - name: Download built distributions
         uses: actions/download-artifact@v4
@@ -189,8 +201,11 @@ jobs:
           import sys
           from pathlib import Path
 
-          wheel_uri = next(Path("dist").glob("seavision-*.whl")).resolve().as_uri()
-          spec = f"seavision[gui,edge] @ {wheel_uri}"
+          wheels = sorted(Path("dist").glob("*.whl"))
+          if len(wheels) != 1:
+              raise SystemExit(f"Expected exactly one wheel in dist/, found: {wheels}")
+          wheel_uri = wheels[0].resolve().as_uri()
+          spec = f"seavision-python[gui,edge] @ {wheel_uri}"
 
           print(f"Installing {spec}")
           subprocess.check_call([sys.executable, "-m", "pip", "install", spec])
