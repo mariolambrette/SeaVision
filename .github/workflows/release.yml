@@ -236,7 +236,6 @@ jobs:
           python-version: "3.12"
 
       - name: Install Ubuntu GUI system libraries
-        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y libegl1 libgl1
