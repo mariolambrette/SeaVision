@@ -6,6 +6,7 @@ from typing import List, Optional
 
 from .base import VideoSource
 from .local import LocalVideoSource
+from .s3 import S3VideoSource
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 def discover_local_videos(
         path: str,
         pattern: str = "*.ts"
-) -> List[VideoSource]:
+) -> List[LocalVideoSource]:
     """
     Discover video files on the local file system.
 
@@ -64,7 +65,7 @@ def discover_s3_videos(
     region_name: Optional[str] = None,
     profile_name: Optional[str] = None,
     endpoint_url: Optional[str] = None,
-) -> List[VideoSource]:
+) -> List[S3VideoSource]:
     """
     Discover video files in an S3 bucket.
     
@@ -107,7 +108,6 @@ def discover_s3_videos(
         )
 
     from fnmatch import fnmatch
-    from .s3 import S3VideoSource
 
     # Create S3 client via session (supports SSO profiles and custom endpoints)
     session = boto3.Session(
