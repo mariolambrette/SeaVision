@@ -1,0 +1,1 @@
+TODO: Write documentation for the SAM3 detector
