@@ -43,6 +43,8 @@ sudo ./aws/install
 
 ## Step 2: Configure AWS SSO Profile
 
+TODO: This works when users have a start URL and IAM access role (check wording for that). If users have the access and secret key they should instead run `aws configure --profile <profile_name> and enter the keys and host location as prompted.
+
 Run the SSO configuration command:
 
 ```bash
