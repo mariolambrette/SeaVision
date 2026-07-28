@@ -1,3 +1,3 @@
 """SeaVision - Human-in-the-loop Computer Vision for Marine Environments."""
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
