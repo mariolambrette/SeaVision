@@ -105,7 +105,7 @@ class YOLODetector(DetectorBase):
         if self.config.device:
             try:
                 self._model.to(self.config.device)
-            except Exception as exc:
+            except Exception as exc: # pylint: disable=broad-exception-caught
                 logger.warning(
                     "Failed to move YOLO model to device '%s': %s. "
                     "Using default device instead.",
@@ -155,7 +155,7 @@ class YOLODetector(DetectorBase):
 
         # Run YOLO inference on the in-memory frame. All saving-related
         # options are explicitly disabled to avoid side effects.
-        results_list = self._model.predict(
+        results_list = self._model.predict( #type: ignore
             frame,
             imgsz=self.config.imgsz,
             conf=self.config.conf_threshold,
@@ -183,7 +183,7 @@ class YOLODetector(DetectorBase):
         if boxes is None or len(boxes) == 0:
             return
 
-        for i in range(len(boxes)):
+        for i in range(len(boxes)): # pylint: disable=consider-using-enumerate
             box = boxes[i]
 
             # xyxy format as numpy array
